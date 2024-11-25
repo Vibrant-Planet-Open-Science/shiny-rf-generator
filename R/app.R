@@ -190,33 +190,44 @@ server <- function(input, output, session) {
   # Reactive function to filter data based on user inputs
   filter_data <- reactive({
     inputs <- user_inputs()
-    filtered_forests <- data.frame(matrix(nrow = 0,ncol = 4))
-    colnames(filtered_forests) <- c('value','variable','readable_variable','readable_values')
-    filtered_forests[1,] <- c(NA,NA,NA,NA)
-    filtered_structure <- filtered_cover <- filtered_forests
     
+    # Initialize empty data frames with proper structure
+    filtered_forests <- data.frame(
+      value = character(),
+      variable = character(),
+      readable_variable = character(),
+      readable_values = character(),
+      stringsAsFactors = FALSE
+    )
+    filtered_structure <- filtered_forests
+    
+    # Validate and ensure all_vars is not NULL and is a data frame
+    validate(need(!is.null(all_vars), "all_vars is not loaded."))
+    validate(need(is.data.frame(all_vars), "all_vars must be a data frame."))
+    
+    # Apply filtering for Forest Type
     if ("Forest Type" %in% inputs$Variable) {
       selected_forests <- inputs$Value[inputs$Variable == "Forest Type"]
       filtered_forests <- 
-        all_vars |> 
-        dplyr::filter(variable %in% 'ForTyp') |>
-        dplyr::filter(readable_values %in% selected_forests)# Base data
-      
+        all_vars |>
+        dplyr::filter(variable == "ForTyp") |>
+        dplyr::filter(readable_values %in% selected_forests)
     }
+    
+    # Apply filtering for Structure Class
     if ("Structure Class" %in% inputs$Variable) {
       selected_class <- inputs$Value[inputs$Variable == "Structure Class"]
       filtered_structure <- 
-        all_vars |> 
-        dplyr::filter(variable %in% 'Structure_Class') |>
-        dplyr::filter(readable_values %in% selected_class)# Base data
-      
-      # Here you could add additional logic to filter based on structure class
-      # For demonstration, we assume no overlap with forest_types
+        all_vars |>
+        dplyr::filter(variable == "Structure_Class") |>
+        dplyr::filter(readable_values %in% selected_class)
     }
     
+    # Combine filtered results and remove rows with NA readable_values
+    result <- dplyr::bind_rows(filtered_forests, filtered_structure) |>
+      dplyr::filter(!is.na(readable_values))
     
-    bind_rows(filtered_forests,filtered_structure,filtered_cover) |>
-      filter(!is.na(readable_values))
+    return(result)
   })
   
   ## Page 4
@@ -318,252 +329,252 @@ server <- function(input, output, session) {
     data <- filter_variables()
     subset(data, disturbance.group == input$dist)
   })
+}
+
+shinyApp(ui, server)
   
   # Print filtered data for debugging
   # observe({
   #   print(filtered_data())
   # })
   
-  # Define a reactive expression to calculate weighted sum for each group
-  weighted_sum_data <- reactive({
-    # Filter the data based on input$dist and input$t
-    filtered <- filtered_data() %>%
-      filter(Year == input$t)
-    # Calculate the weighted sum for each variable based on input weights
-    weighted_sum <- filtered %>%
-      mutate(
-        weighted_Stratum_1_Crown_Cover = input$cc_weight * Stratum_1_Crown_Cover,
-        weighted_QMD = input$qmd_weight * QMD,
-        weighted_Forest_Down_Dead_Wood = input$sng_weight * Forest_Down_Dead_Wood,
-        weighted_Surface_Shrub = input$sh_weight * Surface_Shrub,
-        weighted_Surface_Herb = input$hb_weight * Surface_Herb,
-        weighted_soil_i = input$soil_weight * soil.i
-        # Add other variables and their weights as needed
-      ) %>%
-      # Calculate the total weighted sum
-      mutate(
-        weighted.RF = ((weighted_Stratum_1_Crown_Cover +
-                          weighted_QMD +
-                          weighted_Forest_Down_Dead_Wood +
-                          weighted_Surface_Shrub +
-                          weighted_Surface_Herb +
-                          weighted_soil_i)*(1-input$mit_weight))
-        # Add other variables here if needed
-      ) %>%
-      # Select only the necessary columns for output
-      select(disturbance.group, treatment.name, Year, weighted.RF, REBA.Code)
-    
-    return(weighted_sum)
-  })
-  
-  # Render table for weighted data
-  output$weighted_table <- renderTable({
-    weighted_sum_data()
-  })
-  
-  
-  weighted_sum.t <- reactive({
-    # Filter the data based on input$dist and input$t
-    filtered <- filtered_data()
-    # Calculate the weighted sum for each variable based on input weights
-    weighted.t <- filtered %>%
-      mutate(
-        weighted_Stratum_1_Crown_Cover = input$cc_weight * Stratum_1_Crown_Cover,
-        weighted_QMD = input$qmd_weight * QMD,
-        weighted_Forest_Down_Dead_Wood = input$sng_weight * Forest_Down_Dead_Wood,
-        weighted_Surface_Shrub = input$sh_weight * Surface_Shrub,
-        weighted_Surface_Herb = input$hb_weight * Surface_Herb,
-        weighted_soil_i = input$soil_weight * soil.i
-        # Add other variables and their weights as needed
-      ) %>%
-      # Calculate the total weighted sum
-      mutate(
-        weighted.RF = ((weighted_Stratum_1_Crown_Cover +
-                          weighted_QMD +
-                          weighted_Forest_Down_Dead_Wood +
-                          weighted_Surface_Shrub +
-                          weighted_Surface_Herb +
-                          weighted_soil_i)*(1-input$mit_weight))
-        # Add other variables here if needed
-      ) %>%
-      # Select only the necessary columns for output
-      select(disturbance.group, treatment.name, Year, weighted.RF, REBA.Code, color.pallate, color)
-    
-    return(weighted.t)
-  })
-  
-  # Print filtered data for debugging
-  # observe({
-  #   print('weighted RF timeseries')
-  #   print(weighted_sum.t())
-  # })
-  # Output the filtered data as a plot (timeseries plot)
-  output$plot <- renderPlotly({
-    weighted_data <- weighted_sum.t() # Store the reactive value
-    plot_ly(data = weighted_data, x = ~Year, y = ~weighted.RF, type = 'scatter', mode = 'lines+markers', 
-            color = ~treatment.name, colors = ~color, text = ~treatment.name) %>%
-      layout(title = paste("Response Functions for", unique(weighted_data$disturbance.group)),
-             xaxis = list(title = "Time Since Disturbance"),
-             yaxis = list(title = "Weighted Effect in SARA value", range = c(-1.1, 1.1)),
-             margin = list(l = 75, r = 75, t = 100, b = 100)) # Adjust margins as needed
-  })
-  
-  
-  # Download response functions as CSV
-  output$download_csv <- downloadHandler(
-    filename = function() {
-      paste("response_functions_", Sys.Date(), ".csv", sep="")
-    },
-    content = function(file) {
-      write.csv(weighted_sum_data(), file)
-    }
-  )
-  
-  # Download weights as CSV
-  output$download_weights <- downloadHandler(
-    filename = function() {
-      paste("weights_", Sys.Date(), ".csv", sep="")
-    },
-    content = function(file) {
-      # Create a dataframe of weights
-      weights <- data.frame(
-        Canopy_Cover = input$cc_weight,
-        Tree_Diameter = input$qmd_weight,
-        Snag_Downed_Wood_Abundance = input$sng_weight,
-        Shrub_Density = input$sh_weight,
-        Herbaceous_Density = input$hb_weight,
-        Soil_Integrity = input$soil_weight,
-        Mitigation_Effectiveness = input$mit_weight
-        # Add other weights as needed
-      )
-      write.csv(weights, file)
-    }
-  )
-  
-  
-  
-  output$gather_weights <- renderUI({ 
-  
-      layout_sidebar(
-        # Sidebar panel for inputs ----
-        sidebar = sidebar(
-          width = 550, # Adjust the width of the sidebar here
-          
-          
-          # Input: Select the random distribution type ----
-          
-          h5('Strategic Area, Resource, or Asset (SARA) Information:'),
-          textInput("SARA", "Species Common Name"),
-          textInput("SARA", "Species Scientific Name"),
-          textInput("SARA", "SARA Description"),
-          
-          radioButtons("dist", "Response Function Type:",
-                       c("Wildfire" = "Wildfire",
-                         "Mechanical Treatment" = "Mechanical  Treatments",
-                         "Complex Mechanical Treatment" = "Complex Mechanical Treatment",
-                         "Manual" = "Manual Fuel Treatments",
-                         "Mechanical Rearrangement" ="Mechanical Rearrangement",
-                         "Restoration" = "Restoration",
-                         "Rx Fire" = "Prescribed Fire"
-                       )),
-                       h5('Ecosystem Components'),
-                       p(HTML('Ecosystem Component (EC) effects represent how an increase or decrease in each ecosystem component
-        
-        affects the species’ currently-mapped habitat suitability (the SARA) relative to current conditions. <br> <br> Ecosystem Component (EC) effects can range from -1  to +1 where, for example: <br> <br>
-          
-          -1: (100% reduction EC) |  0: (no change in EC) | +1 (100% increase in EC) <br> <br> <i> For example, a canopy cover effect of +1 indicates that a 100% increase in canopy cover within the currently mapped habitat would benefit this species.</i>')),
-          
-                       # the current species SARA would be strongly positive for the SARA’s value to the species.</i>"
-                       # Sliders for variable weighting
-                       sliderInput("cc_weight", HTML("Canopy Cover: <br> <i>Increase or decrease in percent canopy cover</i>"), min = -1, max = 1, value = 0, step = 0.25),
-                       sliderInput("qmd_weight", HTML("Tree Diameter: <br> <i>Increase or decrease in average tree diameter</i>"), min = -1, max = 1, value = 0, step = 0.25),
-                       sliderInput("sng_weight", HTML("Snag & Downed Wood Abundance: <br> <i>Increase or decrease in count of hard and soft snags</i>"), min = -1, max = 1, value = 0, step = 0.25),
-                       sliderInput("sh_weight", HTML("Shrub Density: <br> <i> Increase or decrease in shrubs and saplings</i>"), min = -1, max = 1, value = 0, step = 0.25),
-                       sliderInput("hb_weight", HTML("Herbaceous Density: <br> <i>Increase or decrease in herbaceous cover</i>"), min = -1, max = 1, value = 0, step = 0.25),
-                       sliderInput("soil_weight", HTML("Soil Integrity: <br> <i>Increase or decrease in bare soil and erosion</i>"), min = -1, max = 1, value = 0, step = 0.25),
-                       #sliderInput("h2o_weight", HTML("Water Quality: <br> <i>Response to sediment delivery in surface water</i>"), min = -1, max = 1, value = 0, step = 0.25),
-                       sliderInput("mit_weight", HTML("Mitigation Effectiveness: <br> <i>adjustment  of impacts 0 (no mitigation) to 1 (full mitigation) of effects</i>"), min = 0, max = 1, value = 0, step = .10),
-                       
-                       # br() element to introduce extra vertical spacing ----
-                       br(),
-                       # Input: Slider for the number of observations to generate ----
-                       sliderInput("t",
-                                   "Time Since Disturbance:",
-                                   value = 1,
-                                   min = 1,
-                                   max = 10),
-                       br(),
-                       
-                       downloadButton("download_csv", "Download Response Functions"),
-                       downloadButton("download_weights", "Download Weights")
-          ),
-          
-          # Main panel for displaying outputs ----
-          # Output: A tabset that combines three panels ----
-          
-          navset_card_underline(
-            title = "Response Functions",
-            # Panel with table ----
-            nav_panel("RF Table", tableOutput("weighted_table")),
-            
-            # Panel with plot ----
-            nav_panel("RF Timeseries Plot", plotlyOutput("plot")),
-            
-            # Panel with summary ----
-            nav_panel("RF Assumptions", textAreaInput("RF Assumptions", "Workshop assumptions for this set of response functions:", width = '100%', height = '100%'))
-            
-            
-          )
-        )
-      
-  }
-  )
-  
-}
-shinyApp(ui, server)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# 
-# output$map <- renderLeaflet({
-#   req(values$sf_data)
+#   # Define a reactive expression to calculate weighted sum for each group
+#   weighted_sum_data <- reactive({
+#     # Filter the data based on input$dist and input$t
+#     filtered <- filtered_data() %>%
+#       filter(Year == input$t)
+#     # Calculate the weighted sum for each variable based on input weights
+#     weighted_sum <- filtered %>%
+#       mutate(
+#         weighted_Stratum_1_Crown_Cover = input$cc_weight * Stratum_1_Crown_Cover,
+#         weighted_QMD = input$qmd_weight * QMD,
+#         weighted_Forest_Down_Dead_Wood = input$sng_weight * Forest_Down_Dead_Wood,
+#         weighted_Surface_Shrub = input$sh_weight * Surface_Shrub,
+#         weighted_Surface_Herb = input$hb_weight * Surface_Herb,
+#         weighted_soil_i = input$soil_weight * soil.i
+#         # Add other variables and their weights as needed
+#       ) %>%
+#       # Calculate the total weighted sum
+#       mutate(
+#         weighted.RF = ((weighted_Stratum_1_Crown_Cover +
+#                           weighted_QMD +
+#                           weighted_Forest_Down_Dead_Wood +
+#                           weighted_Surface_Shrub +
+#                           weighted_Surface_Herb +
+#                           weighted_soil_i)*(1-input$mit_weight))
+#         # Add other variables here if needed
+#       ) %>%
+#       # Select only the necessary columns for output
+#       select(disturbance.group, treatment.name, Year, weighted.RF, REBA.Code)
+#     
+#     return(weighted_sum)
+#   })
 #   
-#   leaflet() %>%
-#     addProviderTiles("OpenStreetMap") %>%
-#     addPolygons(data = sf::st_transform(values$sf_data, 4326), color = "blue", weight = 1)
-# })
+#   # Render table for weighted data
+#   output$weighted_table <- renderTable({
+#     weighted_sum_data()
+#   })
+#   
+#   
+#   weighted_sum.t <- reactive({
+#     # Filter the data based on input$dist and input$t
+#     filtered <- filtered_data()
+#     # Calculate the weighted sum for each variable based on input weights
+#     weighted.t <- filtered %>%
+#       mutate(
+#         weighted_Stratum_1_Crown_Cover = input$cc_weight * Stratum_1_Crown_Cover,
+#         weighted_QMD = input$qmd_weight * QMD,
+#         weighted_Forest_Down_Dead_Wood = input$sng_weight * Forest_Down_Dead_Wood,
+#         weighted_Surface_Shrub = input$sh_weight * Surface_Shrub,
+#         weighted_Surface_Herb = input$hb_weight * Surface_Herb,
+#         weighted_soil_i = input$soil_weight * soil.i
+#         # Add other variables and their weights as needed
+#       ) %>%
+#       # Calculate the total weighted sum
+#       mutate(
+#         weighted.RF = ((weighted_Stratum_1_Crown_Cover +
+#                           weighted_QMD +
+#                           weighted_Forest_Down_Dead_Wood +
+#                           weighted_Surface_Shrub +
+#                           weighted_Surface_Herb +
+#                           weighted_soil_i)*(1-input$mit_weight))
+#         # Add other variables here if needed
+#       ) %>%
+#       # Select only the necessary columns for output
+#       select(disturbance.group, treatment.name, Year, weighted.RF, REBA.Code, color.pallate, color)
+#     
+#     return(weighted.t)
+#   })
+#   
+#   # Print filtered data for debugging
+#   # observe({
+#   #   print('weighted RF timeseries')
+#   #   print(weighted_sum.t())
+#   # })
+#   # Output the filtered data as a plot (timeseries plot)
+#   output$plot <- renderPlotly({
+#     weighted_data <- weighted_sum.t() # Store the reactive value
+#     plot_ly(data = weighted_data, x = ~Year, y = ~weighted.RF, type = 'scatter', mode = 'lines+markers', 
+#             color = ~treatment.name, colors = ~color, text = ~treatment.name) %>%
+#       layout(title = paste("Response Functions for", unique(weighted_data$disturbance.group)),
+#              xaxis = list(title = "Time Since Disturbance"),
+#              yaxis = list(title = "Weighted Effect in SARA value", range = c(-1.1, 1.1)),
+#              margin = list(l = 75, r = 75, t = 100, b = 100)) # Adjust margins as needed
+#   })
+#   
+#   
+#   # Download response functions as CSV
+#   output$download_csv <- downloadHandler(
+#     filename = function() {
+#       paste("response_functions_", Sys.Date(), ".csv", sep="")
+#     },
+#     content = function(file) {
+#       write.csv(weighted_sum_data(), file)
+#     }
+#   )
+#   
+#   # Download weights as CSV
+#   output$download_weights <- downloadHandler(
+#     filename = function() {
+#       paste("weights_", Sys.Date(), ".csv", sep="")
+#     },
+#     content = function(file) {
+#       # Create a dataframe of weights
+#       weights <- data.frame(
+#         Canopy_Cover = input$cc_weight,
+#         Tree_Diameter = input$qmd_weight,
+#         Snag_Downed_Wood_Abundance = input$sng_weight,
+#         Shrub_Density = input$sh_weight,
+#         Herbaceous_Density = input$hb_weight,
+#         Soil_Integrity = input$soil_weight,
+#         Mitigation_Effectiveness = input$mit_weight
+#         # Add other weights as needed
+#       )
+#       write.csv(weights, file)
+#     }
+#   )
+#   
+#   
+#   
+#   output$gather_weights <- renderUI({ 
+#   
+#       layout_sidebar(
+#         # Sidebar panel for inputs ----
+#         sidebar = sidebar(
+#           width = 550, # Adjust the width of the sidebar here
+#           
+#           
+#           # Input: Select the random distribution type ----
+#           
+#           h5('Strategic Area, Resource, or Asset (SARA) Information:'),
+#           textInput("SARA", "Species Common Name"),
+#           # Read the uploaded table
+#           dist_table <- read.csv(here::here("data", "dist-table.csv")),
+#           
+#           # Extract unique values from disturbance_grp
+#           disturbance_options <- unique(dist_table$disturbance_grp),
+#           
+#           # Generate radio buttons dynamically
+#           radioButtons("dist", "Response Function Type:",
+#                        choices = setNames(disturbance_options, disturbance_options)),
+#                        h5('Ecosystem Components')#,
+# #                        p(HTML('Ecosystem Component (EC) effects represent how an increase or decrease in each ecosystem component
+# #         
+# #         affects the species’ currently-mapped habitat suitability (the SARA) relative to current conditions. <br> <br> Ecosystem Component (EC) effects can range from -1  to +1 where, for example: <br> <br>
+# #           
+# #           -1: (100% reduction EC) |  0: (no change in EC) | +1 (100% increase in EC) <br> <br> <i> For example, a canopy cover effect of +1 indicates that a 100% increase in canopy cover within the currently mapped habitat would benefit this species.</i>')),
+# #           
+# #                        # the current species SARA would be strongly positive for the SARA’s value to the species.</i>"
+# #                        # Sliders for variable weighting
+# #                        sliderInput("cc_weight", HTML("Canopy Cover: <br> <i>Increase or decrease in percent canopy cover</i>"), min = -1, max = 1, value = 0, step = 0.25),
+# #                        sliderInput("qmd_weight", HTML("Tree Diameter: <br> <i>Increase or decrease in average tree diameter</i>"), min = -1, max = 1, value = 0, step = 0.25),
+# #                        sliderInput("sng_weight", HTML("Snag & Downed Wood Abundance: <br> <i>Increase or decrease in count of hard and soft snags</i>"), min = -1, max = 1, value = 0, step = 0.25),
+# #                        sliderInput("sh_weight", HTML("Shrub Density: <br> <i> Increase or decrease in shrubs and saplings</i>"), min = -1, max = 1, value = 0, step = 0.25),
+# #                        sliderInput("hb_weight", HTML("Herbaceous Density: <br> <i>Increase or decrease in herbaceous cover</i>"), min = -1, max = 1, value = 0, step = 0.25),
+# #                        sliderInput("soil_weight", HTML("Soil Integrity: <br> <i>Increase or decrease in bare soil and erosion</i>"), min = -1, max = 1, value = 0, step = 0.25),
+# #                        #sliderInput("h2o_weight", HTML("Water Quality: <br> <i>Response to sediment delivery in surface water</i>"), min = -1, max = 1, value = 0, step = 0.25),
+# #                        sliderInput("mit_weight", HTML("Mitigation Effectiveness: <br> <i>adjustment  of impacts 0 (no mitigation) to 1 (full mitigation) of effects</i>"), min = 0, max = 1, value = 0, step = .10),
+# #                        
+# #                        # br() element to introduce extra vertical spacing ----
+# #                        br(),
+# #                        # Input: Slider for the number of observations to generate ----
+# #                        sliderInput("t",
+# #                                    "Time Since Disturbance:",
+# #                                    value = 1,
+# #                                    min = 1,
+# #                                    max = 10),
+# #                        br(),
+# #                        
+# #                        downloadButton("download_csv", "Download Response Functions"),
+# #                        downloadButton("download_weights", "Download Weights")
+# #           ),
+# #           
+# #           # Main panel for displaying outputs ----
+# #           # Output: A tabset that combines three panels ----
+# #           
+# #           navset_card_underline(
+# #             title = "Response Functions",
+# #             # Panel with table ----
+# #             nav_panel("RF Table", tableOutput("weighted_table")),
+# #             
+# #             # Panel with plot ----
+# #             nav_panel("RF Timeseries Plot", plotlyOutput("plot")),
+# #             
+# #             # Panel with summary ----
+# #             nav_panel("RF Assumptions", textAreaInput("RF Assumptions", "Workshop assumptions for this set of response functions:", width = '100%', height = '100%'))
+# #             
+# #             
+# #           )
+# #         )
+# #       
+# #   }
+# #   )
+# #   
+# # }
+# # shinyApp(ui, server)
 # 
-# # Render the frequency table
-# # output$freq_table <- renderTable({
-# #   req(values$freq_table)
-# #   values$freq_table[1:10,]
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# # 
+# # output$map <- renderLeaflet({
+# #   req(values$sf_data)
+# #   
+# #   leaflet() %>%
+# #     addProviderTiles("OpenStreetMap") %>%
+# #     addPolygons(data = sf::st_transform(values$sf_data, 4326), color = "blue", weight = 1)
 # # })
-# 
-# # Render the frequency plot
-# output$freq_plot <- renderPlot({
-#   req(values$freq_table)
-#   
-#   ggplot(values$freq_table, aes(x = value, y = count)) +
-#     geom_bar(stat = "identity", fill = "steelblue") +
-#     theme_minimal() +
-#     labs(title = "Frequency of Raster Values",
-#          x = "Raster Value",
-#          y = "Frequency")
-# })
+# # 
+# # # Render the frequency table
+# # # output$freq_table <- renderTable({
+# # #   req(values$freq_table)
+# # #   values$freq_table[1:10,]
+# # # })
+# # 
+# # # Render the frequency plot
+# # output$freq_plot <- renderPlot({
+# #   req(values$freq_table)
+# #   
+# #   ggplot(values$freq_table, aes(x = value, y = count)) +
+# #     geom_bar(stat = "identity", fill = "steelblue") +
+# #     theme_minimal() +
+# #     labs(title = "Frequency of Raster Values",
+# #          x = "Raster Value",
+# #          y = "Frequency")
+# # })

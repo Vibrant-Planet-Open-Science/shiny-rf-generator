@@ -252,3 +252,28 @@ get_potential_variable_names <- function(stand_dataframe) {
     colnames()
   return(variable_names)
 }
+
+stand_stk_wide <- function(filtered_stdstk, filtered_stands){  
+  
+  filtered_stands |>
+    dplyr::select(-CaseID) |> #switch this out when fixed
+    dplyr::left_join(filtered_stdstk, by = c('MgmtID','StandID','Year','RunTitle')) |> # should just drop all of these from stk_filter and 
+    dplyr::filter(RunTitle %in% unique(filtered_stdstk$RunTitle))#temp fix to deal with multiple runtitles for each mgmtID in summary
+  
+}
+
+get_filtered_stdstk <- function(stdstk_data_frame, stand_data_frame){
+  
+  stdstk_data_frame |>
+    dplyr::filter(StandID %in% stand_data_frame$StandID) |>
+    dplyr::select(MgmtID, StandID, Year, Species, LiveTpa, LiveBA, RunTitle, CaseID) |>
+    dplyr::distinct() |>  
+    dplyr::group_by(MgmtID, StandID, Year, RunTitle, CaseID) |>
+    tidyr::pivot_wider(
+      names_from = Species,
+      values_from = c(LiveTpa, LiveBA)#,  values_fn = {summary_fun}
+    ) |>
+    dplyr::mutate(
+      StandID = as.character(StandID)
+    )
+}
