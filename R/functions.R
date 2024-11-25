@@ -47,8 +47,9 @@ get_tm_ids <- function(aoi_path, filetype, unique_ids){
   files <- county_tmids %>%
     list()|>
     purrr::map_df(~as.data.frame(.)) %>%
-    dplyr::select(Key)
-files=files$Key
+    dplyr::select(Key) #|>
+
+  files=files$Key
   
   # Extract GEOIDs from filenames
   ids <- sapply(files, function(files) {
