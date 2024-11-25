@@ -26,8 +26,18 @@ server <- function(input, output, session) {
     raster_data = NULL
   )
   # Reactive value to track the current page
-  
+  #vars=readRDS()
+  all_fvs_variables <-
+    aws.s3::s3readRDS(
+      bucket = 'vp-open-science',
+      object = 'rf-generator-data/rshiny-spatial-data/all_vars_codes.rds')
   current_page <- reactiveVal("home")
+  
+  # Debug: Monitor page transitions
+  observe({
+    print(current_page()) # Debug: Verify page transitions
+  })
+  
   # Reactive value to store user inputs dynamically
   user_inputs <- reactiveVal(
     data.frame(
@@ -67,7 +77,7 @@ server <- function(input, output, session) {
       )
     } else if (current_page() == "page5") {
       fluidPage(
-        h3("Choose your response variables (max : 5)"),
+        h3("Choose variables for your response function (up to 5)"),
         uiOutput("render_filters"),
         actionButton("go_to_page6", "choose weights")
       )
@@ -154,15 +164,15 @@ server <- function(input, output, session) {
 
   #  all_vars <- '/Users/eyackulic/Desktop/all_vars_codes.rds' |> 
     #readRDS()
-    all_vars <-
+    all_fvs_variables <-
     aws.s3::s3readRDS(
       bucket = 'vp-open-science',
       object = 'rf-generator-data/rshiny-spatial-data/all_vars_codes.rds')
       
    
     
-    all_vars <-
-      all_vars |>
+    all_fvs_variables <-
+      all_fvs_variables |>
       dplyr::mutate(
         val = dplyr::if_else(variable %in% 'ForTyp'& value %in% unique(df$ForTyp), 1, val),
         val = dplyr::if_else(variable %in% 'Structure_Class'& value %in% unique(df$Structure_Class), 1, val)
@@ -172,13 +182,13 @@ server <- function(input, output, session) {
     
     ui_elements <- list()
     if ("Forest Type" %in% selected) {
-      choice = all_vars |> dplyr::filter(variable %in% 'ForTyp')
+      choice = all_fvs_variables |> dplyr::filter(variable %in% 'ForTyp')
       ui_elements <- c(ui_elements, selectInput(
         "forest_type", "Select Forest Type", choices = choice$readable_values, multiple = T
       ))
     }
     if ("Structure Class (Seral Stage)" %in% selected) {
-      choice = all_vars |> dplyr::filter(variable %in% 'Structure_Class')
+      choice = all_fvs_variables |> dplyr::filter(variable %in% 'Structure_Class')
       ui_elements <- c(ui_elements, selectInput(
         "structure_class", "Select Structure Class", choices = choice$readable_values, multiple = T
       ))
@@ -191,7 +201,12 @@ server <- function(input, output, session) {
   filter_data <- reactive({
     inputs <- user_inputs()
     
-    # Initialize empty data frames with proper structure
+    # Load all_fvs_variables reactively
+    vars <- all_fvs_variables
+    
+    validate(need(!is.null(vars), "all_fvs_variables is not loaded."))
+    validate(need(is.data.frame(vars), "all_fvs_variables must be a data frame."))
+    
     filtered_forests <- data.frame(
       value = character(),
       variable = character(),
@@ -201,29 +216,22 @@ server <- function(input, output, session) {
     )
     filtered_structure <- filtered_forests
     
-    # Validate and ensure all_vars is not NULL and is a data frame
-    validate(need(!is.null(all_vars), "all_vars is not loaded."))
-    validate(need(is.data.frame(all_vars), "all_vars must be a data frame."))
-    
-    # Apply filtering for Forest Type
     if ("Forest Type" %in% inputs$Variable) {
       selected_forests <- inputs$Value[inputs$Variable == "Forest Type"]
       filtered_forests <- 
-        all_vars |>
+        vars |>
         dplyr::filter(variable == "ForTyp") |>
         dplyr::filter(readable_values %in% selected_forests)
     }
     
-    # Apply filtering for Structure Class
     if ("Structure Class" %in% inputs$Variable) {
       selected_class <- inputs$Value[inputs$Variable == "Structure Class"]
       filtered_structure <- 
-        all_vars |>
+        vars |>
         dplyr::filter(variable == "Structure_Class") |>
         dplyr::filter(readable_values %in% selected_class)
     }
     
-    # Combine filtered results and remove rows with NA readable_values
     result <- dplyr::bind_rows(filtered_forests, filtered_structure) |>
       dplyr::filter(!is.na(readable_values))
     
@@ -245,7 +253,6 @@ server <- function(input, output, session) {
   filter_variables  <- reactive({
     rdf <- values$freq_table |> distinct()
     filters <- filter_data()
-    
     withProgress(message = 'Gathering filters', value = 0, {
       
       if ("Forest Type" %in% filters$readable_variable) {
@@ -261,7 +268,7 @@ server <- function(input, output, session) {
     
       incProgress(1/10, detail = paste("Adding Stand Data"))
        #error is occurring here because rdf structure doesnt match actual full dataframe anymore
-   
+
     #need an if statement here that choses variant path based on ids variant code
     if(unique(rdf$Variant) %in% 'CA'){
     #stand_level_path <- '/Users/eyackulic/Downloads/CA-FIC-StandLevel_2024-09-25.rds'
@@ -307,10 +314,12 @@ server <- function(input, output, session) {
     output$render_filters <- renderUI({   
     
       all_variables <-filter_variables()
-      
+      print(all_variables)
       all_variable_names <- 
       all_variables |> 
       get_potential_variable_names()
+      print(all_variable_names)
+      
 
     #remove instead by number of non-NA observations
     ui_elements <- list()
@@ -325,13 +334,11 @@ server <- function(input, output, session) {
   #STILL NEED TO LINK UP DATA TO SLIDERS 
     
   
-  filtered_data <- reactive({
-    data <- filter_variables()
-    subset(data, disturbance.group == input$dist)
-  })
-}
+  # filtered_data <- reactive({
+  #   data <- filter_variables()
+  #   subset(data, disturbance.group == input$dist)
+  # })
 
-shinyApp(ui, server)
   
   # Print filtered data for debugging
   # observe({
@@ -530,8 +537,8 @@ shinyApp(ui, server)
 # #   }
 # #   )
 # #   
-# # }
-# # shinyApp(ui, server)
+ }
+ shinyApp(ui, server)
 # 
 # 
 # 
