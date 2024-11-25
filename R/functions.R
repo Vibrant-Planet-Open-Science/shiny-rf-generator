@@ -21,19 +21,12 @@
 #' 
 get_tm_ids <- function(aoi_path, filetype, unique_ids){
   
-  county <- sf::read_sf(here::here("data", "tl_2024_western_counties.gpkg")) |>
-    sf::read_sf()
+  county <- sf::read_sf(here::here("data", "tl_2024_western_counties.gpkg"))
   
   # Load and process AOI data
-  if (filetype == "gpkg") {
     aoi <- sf::read_sf(aoi_path) %>%
       sf::st_transform(sf::st_crs(county))
     aoi_counties <- sf::st_intersection(county, aoi)
-  } else if (filetype == "tif") {
-    stop("TIFF processing is not yet implemented.")
-  } else {
-    stop("Unsupported file type. Only 'gpkg' and 'tif' are allowed.")
-  }
   
   # Load California counties for GEOID comparison
   ca_counties <- readRDS(here::here("data","ca_counties.rds")) %>%
@@ -52,18 +45,19 @@ get_tm_ids <- function(aoi_path, filetype, unique_ids){
   
   # Parse file paths from the bucket
   files <- county_tmids %>%
+    list()|>
     purrr::map_df(~as.data.frame(.)) %>%
     dplyr::select(Key)
-  filenames <- files$Key
+files=files$Key
   
   # Extract GEOIDs from filenames
-  ids <- sapply(filenames, function(filename) {
-    locs <- unlist(gregexpr("_", filename))
-    substring(filename, locs[4] + 1, locs[5] - 1)
+  ids <- sapply(files, function(files) {
+    locs <- unlist(gregexpr("_", files))
+    substring(files, locs[4] + 1, locs[5] - 1)
   })
   
   # Filter filenames by AOI counties
-  counts <- filenames[ids %in% aoi_counties$GEOID]
+  counts <- files[ids %in% aoi_counties$GEOID]
   
   # Process each filtered filename
   tm_out <- NULL
@@ -75,6 +69,7 @@ get_tm_ids <- function(aoi_path, filetype, unique_ids){
     
     # Filter TM IDs within AOI bounds
     dims <- sf::st_bbox(aoi)
+    colnames(tm_ids)=c('lat', 'lon', 'tm_id')
     tm_ids <- tm_ids %>%
       dplyr::filter(
         lat >= dims["xmin"] & lat <= dims["xmax"],
