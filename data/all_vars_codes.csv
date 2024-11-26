@@ -1,0 +1,149 @@
+"","value","variable","readable_variable","readable_values","val"
+"1","101","ForTyp","Forest Type"," Jack pine",0
+"2","102","ForTyp","Forest Type"," Red pine",0
+"3","103","ForTyp","Forest Type"," Eastern white pine",0
+"4","104","ForTyp","Forest Type"," Eastern White pine / Eastern hemlock",0
+"5","105","ForTyp","Forest Type"," Eastern hemlock",0
+"6","121","ForTyp","Forest Type"," Balsam fir",0
+"7","122","ForTyp","Forest Type"," White spruce",0
+"8","123","ForTyp","Forest Type"," Red spruce",0
+"9","124","ForTyp","Forest Type"," Red spruce / balsam fir",0
+"10","125","ForTyp","Forest Type"," Black spruce",0
+"11","126","ForTyp","Forest Type"," Tamarack",0
+"12","127","ForTyp","Forest Type"," Northern white-cedar",0
+"13","141","ForTyp","Forest Type"," Longleaf pine",0
+"14","142","ForTyp","Forest Type"," Slash pine",0
+"15","161","ForTyp","Forest Type"," Loblolly pine",0
+"16","162","ForTyp","Forest Type"," Shortleaf pine",0
+"17","163","ForTyp","Forest Type"," Virginia pine",0
+"18","164","ForTyp","Forest Type"," Sand pine",0
+"19","165","ForTyp","Forest Type"," Table-mountain pine",0
+"20","166","ForTyp","Forest Type"," Pond pine",0
+"21","167","ForTyp","Forest Type"," Pitch pine",0
+"22","168","ForTyp","Forest Type"," Spruce pine",0
+"23","181","ForTyp","Forest Type"," Eastern redcedar",0
+"24","182","ForTyp","Forest Type"," Rocky Mountain juniper",0
+"25","183","ForTyp","Forest Type"," Western juniper",0
+"26","184","ForTyp","Forest Type"," Juniper woodland",0
+"27","185","ForTyp","Forest Type"," Pinyon juniper woodland",0
+"28","201","ForTyp","Forest Type"," Douglas-fir",0
+"29","202","ForTyp","Forest Type"," Port-Orford-cedar",0
+"30","221","ForTyp","Forest Type"," Ponderosa pine",0
+"31","222","ForTyp","Forest Type"," Incense cedar",0
+"32","223","ForTyp","Forest Type"," Jeffrey pine / Coulter pine / bigcone Douglas-",0
+"33","224","ForTyp","Forest Type"," Sugar pine",0
+"34","241","ForTyp","Forest Type"," Western white pine",0
+"35","261","ForTyp","Forest Type"," White fir",0
+"36","262","ForTyp","Forest Type"," Red fir",0
+"37","263","ForTyp","Forest Type"," Noble fir",0
+"38","264","ForTyp","Forest Type"," Pacific silver fir",0
+"39","265","ForTyp","Forest Type"," Engelmann spruce",0
+"40","266","ForTyp","Forest Type"," Engelmann spruce / subalpine fir",0
+"41","267","ForTyp","Forest Type"," Grand fir",0
+"42","268","ForTyp","Forest Type"," Subalpine fir",0
+"43","269","ForTyp","Forest Type"," Blue spruce",0
+"44","270","ForTyp","Forest Type"," Mountain hemlock",0
+"45","271","ForTyp","Forest Type"," Alaska-yellow-cedar",0
+"46","281","ForTyp","Forest Type"," Lodgepole pine",0
+"47","301","ForTyp","Forest Type"," Western hemlock",0
+"48","304","ForTyp","Forest Type"," Western redcedar",0
+"49","305","ForTyp","Forest Type"," Sitka spruce",0
+"50","321","ForTyp","Forest Type"," Western larch",0
+"51","341","ForTyp","Forest Type"," Redwood",0
+"52","342","ForTyp","Forest Type"," Giant sequoia",0
+"53","361","ForTyp","Forest Type"," Knobcone pine",0
+"54","362","ForTyp","Forest Type"," Southwest white pine",0
+"55","363","ForTyp","Forest Type"," Bishop pine",0
+"56","364","ForTyp","Forest Type"," Monterey pine",0
+"57","365","ForTyp","Forest Type"," Foxtail pine / bristlecone pine",0
+"58","366","ForTyp","Forest Type"," Limber pine",0
+"59","367","ForTyp","Forest Type"," Whitebark pine",0
+"60","368","ForTyp","Forest Type"," Misc. western softwoods",0
+"61","371","ForTyp","Forest Type"," California mixed conifer",0
+"62","381","ForTyp","Forest Type"," Scotch pine",0
+"63","382","ForTyp","Forest Type"," Australian pine",0
+"64","383","ForTyp","Forest Type"," Other exotic softwoods",0
+"65","384","ForTyp","Forest Type"," Norway Spruce",0
+"66","385","ForTyp","Forest Type"," Introduced larch",0
+"67","401","ForTyp","Forest Type"," Eastern white pine / N. red oak / white ash",0
+"68","402","ForTyp","Forest Type"," Eastern redcedar / hardwood",0
+"69","403","ForTyp","Forest Type"," Longleaf pine / oak",0
+"70","404","ForTyp","Forest Type"," Shortleaf pine / oak",0
+"71","405","ForTyp","Forest Type"," Virginia pine / southern red oak",0
+"72","406","ForTyp","Forest Type"," Loblolly pine / hardwood",0
+"73","407","ForTyp","Forest Type"," Slash pine / hardwood",0
+"74","409","ForTyp","Forest Type"," Other pine / hardwood",0
+"75","501","ForTyp","Forest Type"," Post oak / blackjack oak",0
+"76","502","ForTyp","Forest Type"," Chestnut oak",0
+"77","503","ForTyp","Forest Type"," White oak / red oak / hickory",0
+"78","504","ForTyp","Forest Type"," White oak",0
+"79","505","ForTyp","Forest Type"," Northern red oak",0
+"80","506","ForTyp","Forest Type"," Yellow-poplar / white oak / N. red oak",0
+"81","507","ForTyp","Forest Type"," Sassafras / persimmon",0
+"82","508","ForTyp","Forest Type"," Sweetgum / yellow-poplar",0
+"83","509","ForTyp","Forest Type"," Bur oak",0
+"84","510","ForTyp","Forest Type"," Scarlet oak",0
+"85","511","ForTyp","Forest Type"," Yellow-poplar",0
+"86","512","ForTyp","Forest Type"," Black walnut",0
+"87","513","ForTyp","Forest Type"," Black locust",0
+"88","514","ForTyp","Forest Type"," Southern scrub oak",0
+"89","515","ForTyp","Forest Type"," Chestnut oak / black oak / scarlet oak",0
+"90","519","ForTyp","Forest Type"," Red maple / oak",0
+"91","520","ForTyp","Forest Type"," Mixed upland hardwoods",0
+"92","601","ForTyp","Forest Type"," Swamp chestnut oak / cherrybark oak",0
+"93","602","ForTyp","Forest Type"," Sweetgum / Nuttall oak / willow oak",0
+"94","605","ForTyp","Forest Type"," Overcup oak / water hickory",0
+"95","606","ForTyp","Forest Type"," Atlantic white-cedar",0
+"96","607","ForTyp","Forest Type"," Baldcypress / water tupelo",0
+"97","608","ForTyp","Forest Type"," Sweetbay / swamp tupelo / red maple",0
+"98","701","ForTyp","Forest Type"," Black ash / American elm / red maple",0
+"99","702","ForTyp","Forest Type"," River birch / sycamore",0
+"100","703","ForTyp","Forest Type"," Cottonwood",0
+"101","704","ForTyp","Forest Type"," Willow",0
+"102","705","ForTyp","Forest Type"," Sycamore / pecan / American elm",0
+"103","706","ForTyp","Forest Type"," Sugarberry / hackberry / elm / green ash",0
+"104","707","ForTyp","Forest Type"," Silver maple / American elm",0
+"105","708","ForTyp","Forest Type"," Red maple / lowland",0
+"106","709","ForTyp","Forest Type"," Cottonwood / willow",0
+"107","722","ForTyp","Forest Type"," Oregon ash",0
+"108","801","ForTyp","Forest Type"," Sugar maple / beech / yellow birch",0
+"109","802","ForTyp","Forest Type"," Black cherry",0
+"110","803","ForTyp","Forest Type"," Cherry / ash / yellow-poplar",0
+"111","805","ForTyp","Forest Type"," Hard maple / basswood",0
+"112","807","ForTyp","Forest Type"," Elm / ash / locust",0
+"113","809","ForTyp","Forest Type"," Red maple / upland",0
+"114","901","ForTyp","Forest Type"," Aspen",0
+"115","902","ForTyp","Forest Type"," Paper birch",0
+"116","904","ForTyp","Forest Type"," Balsam poplar",0
+"117","911","ForTyp","Forest Type"," Red alder",0
+"118","912","ForTyp","Forest Type"," Bigleaf maple",0
+"119","921","ForTyp","Forest Type"," Gray pine",0
+"120","922","ForTyp","Forest Type"," California black oak",0
+"121","923","ForTyp","Forest Type"," Oregon white oak",0
+"122","924","ForTyp","Forest Type"," Blue oak",0
+"123","925","ForTyp","Forest Type"," Deciduous oak woodland",0
+"124","926","ForTyp","Forest Type"," Evergreen oak woodland",0
+"125","931","ForTyp","Forest Type"," Coast live oak",0
+"126","932","ForTyp","Forest Type"," Canyon live oak / interior live oak",0
+"127","941","ForTyp","Forest Type"," Tanoak",0
+"128","942","ForTyp","Forest Type"," Califonia laurel",0
+"129","943","ForTyp","Forest Type"," Giant chinkapin",0
+"130","951","ForTyp","Forest Type"," Pacific madrone",0
+"131","952","ForTyp","Forest Type"," Mesquite Woodland",0
+"132","953","ForTyp","Forest Type"," Cercocarpus woodland",0
+"133","954","ForTyp","Forest Type"," Intermountain maple woodland",0
+"134","955","ForTyp","Forest Type"," Misc. western hardwood woodlands",0
+"135","981","ForTyp","Forest Type"," Sabal palm",0
+"136","982","ForTyp","Forest Type"," Mangrove",0
+"137","989","ForTyp","Forest Type"," Other tropical",0
+"138","991","ForTyp","Forest Type"," Paulownia",0
+"139","992","ForTyp","Forest Type"," Melaluca",0
+"140","993","ForTyp","Forest Type"," Eucalyptus",0
+"141","995","ForTyp","Forest Type"," Other exotic hardwoods",0
+"142","0=BG","Structure_Class","Structure Class","Bare Ground (0)",0
+"143","1=S1","Structure_Class","Structure Class","Stand Initiation (1)",0
+"144","2=SE","Structure_Class","Structure Class","Stem Exclusion (2)",0
+"145","3=UR","Structure_Class","Structure Class","Understory Reinitiation (3)",0
+"146","4=YM","Structure_Class","Structure Class","Young Forest Multistrata (4)",0
+"147","5=OS","Structure_Class","Structure Class","Old Forest Single Stratum (5)",0
+"148","6=OM","Structure_Class","Structure Class","Old Forest Multistrata (6)",0
