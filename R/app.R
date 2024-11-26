@@ -14,13 +14,17 @@ gpkg_data <- sf::st_read(here::here('data', 'CR-CA-SugarpineVariants.gpkg'), qui
   sf::st_transform(crs = 4326)
 
 # Load dynamic options for Forest Type and Structure Class
-all_vars_codes <- read.csv(here::here('data', 'all_vars_codes.csv'))
+all_vars_codes <- readRDS(here::here('data', 'unique_stand_data.rds'))%>%
+  filter(complete.cases(.))
+
 forest_type_options <- all_vars_codes %>%
-  filter(variable == "ForTyp") %>%
-  pull(readable_values)
+  arrange(Forest_Type)%>%
+  select(Forest_Type) %>%
+  distinct()
 structure_class_options <- all_vars_codes %>%
-  filter(variable == "Structure_Class") %>%
-  pull(readable_values)
+  arrange(Structure_Class)%>%
+  select("Structure_Class_Description") %>%
+  distinct()
 
 # UI
 ui <- fluidPage(
@@ -49,10 +53,15 @@ ui <- fluidPage(
       actionButton("generate", "Generate Response Function")
     ),
     mainPanel(
-      h3("Results"),
-      textOutput("variant_info"), # Moved to mainPanel
-      tableOutput("filtered_data"),
-      plotOutput("response_plot")
+        h3("Metadata"),
+        textOutput("variant_info"), # Selected variant
+        textOutput("selected_forest_type"), # Selected forest type
+        textOutput("selected_structure_class"), # Selected structure class
+        textOutput("selected_response_type"), # Selected response type
+        textOutput("selected_ecosystem_components"), # Selected ecosystem components
+        h3("Results"),
+        tableOutput("filtered_data"),
+        plotOutput("response_plot")
     )
   )
 )
@@ -64,6 +73,20 @@ server <- function(input, output, session) {
     aoi_data = NULL,
     filtered_data = NULL
   )
+  
+  # Reactive for normalized weights
+  normalized_weights <- reactive({
+    req(input$ecosystem_components)
+    user_weights <- sapply(input$ecosystem_components, function(component) {
+      as.numeric(input[[paste0(component, "_weight")]])
+    })
+    # Ensure weights are numeric and calculate simplex weights
+    if (length(user_weights) > 0) {
+      user_weights / sum(user_weights, na.rm = TRUE)
+    } else {
+      NULL
+    }
+  })
   
   # Step 1: Clickable Map
   output$map <- renderLeaflet({
@@ -91,10 +114,8 @@ server <- function(input, output, session) {
   # Add AOI to the map when uploaded
   observeEvent(input$aoi_file, {
     req(input$aoi_file)
-    # Read AOI data
     values$aoi_data <- st_read(input$aoi_file$datapath)
     
-    # Add the AOI to the map
     leafletProxy("map") %>%
       addPolygons(
         data = values$aoi_data,
@@ -120,15 +141,60 @@ server <- function(input, output, session) {
     paste("Selected Variant:", selected$FVSVarName)
   })
   
-  # Step 4: Ecosystem Components
-  output$ecosystem_components_ui <- renderUI({
-    components <- c("Tpa", "BA", "QMD", "Stratum_1_Crown_Cover", 
-                    "Stratum_1_Nom_Ht", "Surface_Herb", "Surface_Shrub", "Standing_Dead")
-    checkboxGroupInput("ecosystem_components", "Select up to 5 variables", 
-                       choices = components, inline = TRUE)
+  # Metadata outputs for user selections
+  output$selected_forest_type <- renderText({
+    req(input$forest_type)
+    paste("Selected Forest Type(s):", paste(input$forest_type, collapse = ", "))
   })
   
-  # Step 4: Min/Max Threshold and Weight Sliders
+  output$selected_structure_class <- renderText({
+    req(input$structure_class)
+    paste("Selected Structure Class(es):", paste(input$structure_class, collapse = ", "))
+  })
+  
+  output$selected_response_type <- renderText({
+    req(input$response_type)
+    paste("Selected Response Type:", input$response_type)
+  })
+  
+  output$selected_ecosystem_components <- renderText({
+    req(input$ecosystem_components)
+    if (length(input$ecosystem_components) == 0) {
+      "No ecosystem components selected."
+    } else {
+      # Retrieve normalized weights
+      simplex_weights <- normalized_weights()
+      
+      # Format output with simplex weights
+      components_with_weights <- mapply(function(component, weight) {
+        paste(component, "(Simplex Weight:", round(weight, 2), ")")
+      }, input$ecosystem_components, simplex_weights)
+      
+      # Combine components into a single output string
+      paste("Selected Ecosystem Component(s):", paste(components_with_weights, collapse = ", "))
+    }
+  })
+  
+  # Step 4: Ecosystem Components
+  variable_descriptions <- read.csv(here::here('data', 'variable_descriptions.csv'))%>%
+    filter(row_number() >= which(Variable == "Tpa"))
+  
+  output$ecosystem_components_ui <- renderUI({
+    req(variable_descriptions)
+    variable_choices <- setNames(
+      variable_descriptions$Variable, 
+      paste(variable_descriptions$Variable, "-", variable_descriptions$Description)
+    )
+    selectInput(
+      "ecosystem_components", 
+      "Select up to 5 variables", 
+      choices = variable_choices, 
+      multiple = TRUE, 
+      selectize = TRUE
+    )
+  })
+  
+  # Step 4: Min/Max Threshold and Weight Dropdowns
   output$weights_ui <- renderUI({
     req(input$ecosystem_components)
     components <- input$ecosystem_components
@@ -138,12 +204,13 @@ server <- function(input, output, session) {
         column(8, sliderInput(
           inputId = paste0(component, "_range"),
           label = paste(component, "Range"),
-          min = 0, max = 100, value = c(20, 80) # Adjust min, max, and default range as needed
+          min = 0, max = 100, value = c(20, 80)
         )),
-        column(4, sliderInput(
+        column(4, selectInput(
           inputId = paste0(component, "_weight"),
-          label = paste(component, "Weight"),
-          min = 1, max = 5, value = 3
+          label = paste(component, "Weight (1 = Least Important, 5 = Most Important)"),
+          choices = c(1, 2, 3, 4, 5),
+          selected = 3
         ))
       )
     })
