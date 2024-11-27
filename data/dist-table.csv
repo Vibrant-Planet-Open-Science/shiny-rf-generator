@@ -1,0 +1,27 @@
+disturbance_type,disturbance_name,disturbance_grp,MgmtID
+CMR_CC_NONE_NONE,Complex Mechanical Removal - Clearcut,Complex Mechanical Removal,CMCC
+CMR_TH_NONE_NONE,Complex Mechanical Removal - Thinning,Complex Mechanical Removal,MRCT
+CMR_URC_NONE_NONE,Complex Mechanical Removal - Urban Clearing,Complex Mechanical Removal,CMUR
+HCD_BR_NONE_NONE,Herbicides - Broad,Herbicides,RMMA
+HCD_TA_NONE_NONE,Herbicides - Targeted,Herbicides,HCTA
+HRB_HRB_NONE_NONE,Herbivory - Herbivory,Herbivory,HERB
+MRM_CC_NONE_NONE,Mechanical Removal - Clearcut,Mechanical Removal,MRCC
+MRM_CT_NONE_NONE,Mechanical Removal - Commercial Thinning,Mechanical Removal,MRCT
+MRM_SD_NONE_NONE,Mechanical Removal - Small Diameter,Mechanical Removal,MTTH
+MRM_TH_NONE_NONE,Mechanical Removal - Thinning,Mechanical Removal,MRCT
+MRM_VDT_NONE_NONE,Mechanical Removal - Variable Density Thinning,Mechanical Removal,MVDT
+MTH_ISR_NONE_NONE,Manual - Invasives Removal,Manual,MTIR
+MTH_TH_NONE_NONE,Manual - Thinning,Manual,MTTH
+MTH_URC_NONE_NONE,Manual - Urban Clearing,Manual,MTUR
+REV_A_NONE_NONE,Revegetation - Revegetation,Revegetation,REVA
+RGM_GMP_NONE_NONE,Mechanical Rearrangement - Grapple Pile,Mechanical Rearrangement,RMGP
+RGM_MASL_NONE_NONE,Mechanical Rearrangement - Mastication,Mechanical Rearrangement,RMMA
+RGM_TFF_NONE_NONE,Mechanical Rearrangement - Mowing,Mechanical Rearrangement,RMTF
+RXF_AI_NONE_NONE,Rx Fire - Rx Fire - Aerial,Rx Fire,RXAI
+RXF_GFL_NONE_NONE,Rx Fire - Rx Fire - Ground,Rx Fire,RXGF
+Fire,Wildfire,Wildfire - 0-2 ft flame lengths,FIC1
+Fire,Wildfire,Wildfire - 2-4 ft flame lengths,FIC2
+Fire,Wildfire,Wildfire - 4-6 ft flame lengths,FIC3
+Fire,Wildfire,Wildfire - 6-8 ft flame lengths,FIC4
+Fire,Wildfire,Wildfire - 8-12 ft flame lengths,FIC5
+Fire,Wildfire,Wildfire - >12 ft flame lengths,FIC6

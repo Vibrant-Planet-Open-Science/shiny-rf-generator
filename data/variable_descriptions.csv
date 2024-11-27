@@ -1,0 +1,59 @@
+Variable,Description
+CaseID,"Unique identifier for the Forest Vegetation Simulator (FVS) case, aligning with simulation cases."
+Stand_CN,Unique control number identifying each stand.
+StandID,"Stand identification, a more user-friendly label for stands."
+MgmtID,Identifier for the management scenario applied in the simulation.
+RunTitle,Title or label for the FVS simulation run.
+KeywordFile,File containing FVS keywords defining simulation parameters and rules.
+SamplingWt,Sampling weight applied to the stand during analysis.
+Variant,"The FVS variant used, tailored to geographic and forest type-specific modeling (e.g., California Variant for Western U.S.)."
+Version,Version of the FVS software used for the simulation.
+RV,A stand-specific random variable for stochastic modeling purposes.
+Groups,Categorical grouping of stands for batch simulations or analysis.
+RunDateTime,Date and time the simulation was executed.
+Year,Year in which the simulation output is recorded.
+RmvCode,"Removal code indicating harvest or management actions (e.g., thinning)."
+Age,"Stand age in years, typically representing the dominant/co-dominant tree cohort."
+Tpa,"Trees per acre, a measure of stand density."
+TPrdTpa,Predicted trees per acre at a specific simulation interval.
+BA,"Basal area per acre (ft²/acre), indicating tree density and size combined."
+SDI,"Stand Density Index, a relative measure of stand density adjusted for species and site productivity."
+CCF,"Crown Competition Factor, a metric of competition for sunlight among trees."
+TopHt,Average height of the tallest trees (dominant and co-dominant trees).
+QMD,"Quadratic Mean Diameter, a measure of the average tree diameter weighted by basal area."
+TCuFt,"Total cubic foot volume, including all wood in the stand."
+TPrdTCuFt,Predicted total cubic foot volume at a specific simulation interval.
+MCuFt,"Merchantable cubic foot volume, representing usable timber volume."
+TPrdMCuFt,Predicted merchantable cubic foot volume at a specific simulation interval.
+BdFt,"Board foot volume, typically used in lumber measurement."
+TPrdBdFt,Predicted board foot volume at a specific simulation interval.
+RTpa,"Residual trees per acre post-management action (e.g., post-harvest)."
+RTCuFt,Residual cubic foot volume post-management action.
+RMCuFt,Residual merchantable cubic foot volume post-management action.
+RBdFt,Residual board foot volume post-management action.
+PrdLen,Length of the production period in simulation years.
+Acc,"Accumulation metrics, representing changes over time in certain values (e.g., biomass)."
+Mort,"Mortality rate or volume, expressed in units such as trees per acre or cubic feet per acre."
+MAI,"Mean Annual Increment, growth in volume per acre per year."
+ForTyp,Forest type classification.
+SizeCls,Size class categorization of the stand based on dominant tree sizes.
+StkCls,"Stocking class, indicating stand stocking levels relative to site capacity."
+Surface_Litter,"Biomass of surface litter (e.g., fallen leaves, twigs)."
+Surface_Duff,"Biomass of duff, a decomposed organic layer above the soil."
+Surface_lt3,Biomass of surface fuels less than 3 inches in diameter.
+Surface_ge3,Biomass of surface fuels greater than or equal to 3 inches in diameter.
+Surface_3to6,Biomass of surface fuels 3 to 6 inches in diameter.
+Surface_6to12,Biomass of surface fuels 6 to 12 inches in diameter.
+Surface_ge12,Biomass of surface fuels greater than 12 inches in diameter.
+Surface_Herb,Biomass of herbaceous vegetation.
+Surface_Shrub,Biomass of shrubs.
+Surface_Total,"Total surface biomass, including all surface components listed above."
+Standing_Snag_lt3,Biomass of standing snags (dead trees) less than 3 inches in diameter.
+Standing_Snag_ge3,Biomass of standing snags greater than or equal to 3 inches in diameter.
+Standing_Foliage,Biomass of standing foliage on live trees.
+Standing_Live_lt3,Biomass of standing live trees less than 3 inches in diameter.
+Standing_Live_ge3,Biomass of standing live trees greater than or equal to 3 inches in diameter.
+Standing_Total,"Total biomass of all standing components, both live and dead."
+Total_Biomass,"Total biomass in the stand, combining surface and standing components."
+Total_Consumed,Total biomass consumed by fire or management actions.
+Biomass_Removed,Biomass removed during harvest or management activities.
