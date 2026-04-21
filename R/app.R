@@ -57,6 +57,10 @@ structure_classes <- all_vars_codes |>
   dplyr::arrange(value) |>
   dplyr::pull(readable_values) |>
   trimws()
+
+# Stand metadata lookup (used by get_tm_ids for AOI → StandID join)
+stand_lookup <- readRDS(here::here("data", "unique_stand_data.rds"))
+stand_lookup <- stand_lookup[complete.cases(stand_lookup), ]
 mock_species           <- c("Pinus ponderosa (PP)","Pseudotsuga menziesii (DF)",
                             "Pinus albicaulis (WB)","Populus tremuloides (AS)")
 
@@ -155,6 +159,8 @@ server <- function(input, output, session) {
     aoi_method       = NULL,
     selected_regions = character(),
     aoi_stands       = NULL,
+    freq_table       = NULL,
+    variant          = NULL,
     rf_type          = NULL,
     selected_species = character(),
     selected_ecs     = character(),
@@ -195,6 +201,8 @@ server <- function(input, output, session) {
     state$aoi_method       <- NULL
     state$selected_regions <- character()
     state$aoi_stands       <- NULL
+    state$freq_table       <- NULL
+    state$variant          <- NULL
     state$rf_type          <- NULL
     state$selected_species <- character()
     state$selected_ecs     <- character()
@@ -472,8 +480,23 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$aoi_file, {
-    state$aoi_method <- "file"
-    state$aoi_stands <- 1234
+    req(input$aoi_file)
+    tryCatch({
+      withProgress(message = "Processing uploaded AOI...", {
+        tm_ids <- get_tm_ids(
+          aoi_path   = input$aoi_file$datapath,
+          filetype   = tools::file_ext(input$aoi_file$name),
+          unique_ids = stand_lookup
+        )
+        state$freq_table <- tm_ids
+        state$aoi_stands <- nrow(tm_ids)
+        state$variant    <- unique(tm_ids$Variant)[1]
+        state$aoi_method <- "file"
+      })
+    }, error = function(e) {
+      showNotification(paste("AOI upload failed:", e$message),
+                       type = "error", duration = 10)
+    })
   })
   
   output$aoi_file_status <- renderUI({
@@ -494,7 +517,7 @@ server <- function(input, output, session) {
                "Structure class filter", "Matching stands"),
       Value = c(
         aoi_desc,
-        "CR (placeholder)",
+        state$variant %||% "—",
         if (length(input$ft_filter) > 0) paste(input$ft_filter, collapse = ", ") else "All",
         if (length(input$sc_filter) > 0) paste(input$sc_filter, collapse = ", ") else "All",
         as.character(state$aoi_stands %||% "—")

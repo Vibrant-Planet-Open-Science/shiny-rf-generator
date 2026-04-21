@@ -53,10 +53,11 @@ get_tm_ids <- function(aoi_path, filetype, unique_ids){
 
   files=files$Key
   
-  # Extract GEOIDs from filenames
-  ids <- sapply(files, function(files) {
-    locs <- unlist(gregexpr("_", files))
-    substring(files, locs[4] + 1, locs[5] - 1)
+  # Extract GEOIDs from filenames (pattern: CountyName_GEOID_tmids_only.rds)
+  ids <- sapply(files, function(f) {
+    bn <- trimws(basename(f))
+    parts <- strsplit(bn, "_")[[1]]
+    if (length(parts) >= 2) parts[2] else NA_character_
   })
   
   # Filter filenames by AOI counties
@@ -105,11 +106,15 @@ get_tm_ids <- function(aoi_path, filetype, unique_ids){
   }
   
   # Add variant information and join with unique IDs
+  if (is.null(tm_out) || nrow(tm_out) == 0) {
+    stop("No TreeMap stands found in AOI. Check that the AOI overlaps the western US.")
+  }
+
   tm_out <- tm_out %>%
     dplyr::mutate(Variant = variant) %>%
     dplyr::mutate(StandID = as.numeric(StandID)) %>%
     dplyr::left_join(unique_ids, by = c("StandID", "Variant"))
-  
+
   return(tm_out)
 }
 
