@@ -1,255 +1,578 @@
-source(paste0(here::here(), "/R/functions.R"))
+source(here::here("R", "functions.R"))
+source(here::here("R", "ec_labels.R"))
 
 library(shiny)
+library(bslib)
 library(sf)
 library(leaflet)
 library(dplyr)
-library(plotly)
-library(colorspace)
-library(kableExtra)
-library(bslib)
+library(aws.s3)
+library(purrr)
 
-# Load GeoPackage once
-gpkg_data <- sf::st_read(here::here('data', 'CR-CA-SugarpineVariants.gpkg'), quiet = TRUE) %>%
-  sf::st_transform(crs = 4326)
+library(shiny)
+library(leaflet)
+library(dplyr)
+library(tibble)
+library(DT)
 
-# Load dynamic options for Forest Type and Structure Class
-all_vars_codes <- readRDS(here::here('data', 'unique_stand_data.rds'))%>%
-  filter(complete.cases(.))
 
-forest_type_options <- all_vars_codes %>%
-  arrange(Forest_Type)%>%
-  select(Forest_Type) %>%
-  distinct()
-structure_class_options <- all_vars_codes %>%
-  arrange(Structure_Class)%>%
-  select("Structure_Class_Description") %>%
-  distinct()
+# ─────────────────────────────────────────────────────────────────────────────
+# Constants & helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
+SCREENS <- c("aoi", "filters", "review", "rftype", "species", "ecs", "weights", "download")
+STEP_LABELS <- c(aoi="AOI", filters="Filters", review="Review", rftype="RF Type",
+                 ecs="ECs", weights="Weights", download="Download")
+BREADCRUMB_ORDER <- c("aoi", "filters", "review", "rftype", "ecs", "weights", "download")
+
+`%||%` <- function(a, b) if (is.null(a) || length(a) == 0 || identical(a, "")) b else a
+
+# Pre-compute EC checkbox group IDs (matches IDs generated in render_ecs)
+EC_GROUP_IDS <- unique(ec_labels$subcategory) |>
+  tolower() |>
+  (\(x) gsub("[^a-z]", "_", x))() |>
+  (\(x) paste0("ecgrp_", x))()
+
+mock_ecoregions <- data.frame(
+  name    = c("Southern Rockies", "Cascades", "Klamath Mountains",
+              "Sierra Nevada", "Blue Mountains", "Wasatch & Uinta"),
+  biome   = c("Temperate conifer","Temperate conifer","Temperate conifer",
+              "Temperate conifer","Temperate conifer","Montane"),
+  variant = c("CR","CA","CA","CA","CA","CR"),
+  lat     = c(39.5, 47.5, 41.5, 38.5, 45.0, 40.5),
+  lng     = c(-106.5, -121.5, -123.0, -119.5, -118.5, -111.0)
+)
+
+mock_forest_types      <- c("Douglas-fir","Ponderosa pine","Lodgepole pine",
+                            "Whitebark pine","Mixed conifer","Aspen")
+mock_structure_classes <- c(
+  "Bare ground",
+  "Stand initiation",
+  "Stem exclusion — open canopy",
+  "Stem exclusion — closed canopy",
+  "Understory reinitiation",
+  "Young forest multistory",
+  "Old forest multistory",
+  "Old forest single story"
+)
+mock_species           <- c("Pinus ponderosa (PP)","Pseudotsuga menziesii (DF)",
+                            "Pinus albicaulis (WB)","Populus tremuloides (AS)")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Inline styles
+# ─────────────────────────────────────────────────────────────────────────────
+
+app_css <- "
+  body { background: #faf5ed; font-family: 'Helvetica Neue', Arial, sans-serif; color: #1e3a28; }
+  .app-container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+  .hdr { background: #1e3a28; color: #faf5ed; padding: 16px 20px; border-radius: 6px; margin-bottom: 12px; }
+  .hdr input[type='text'] { background: #fff; border: 1px solid #4a5c4e; border-radius: 4px; padding: 8px; }
+  .crumb { font-family: 'Courier New', monospace; font-size: 12px; text-align: right; padding-top: 8px; }
+  .crumb .done { color: #c9b88a; }
+  .crumb .active { color: #faf5ed; font-weight: 600; }
+  .crumb .todo { color: #7a8a75; }
+  .details-wrap { background: #fff; border: 1px solid #e0d4b8; border-radius: 6px;
+                  padding: 10px 14px; margin-bottom: 16px; }
+  .details-wrap summary { cursor: pointer; font-weight: 500; color: #4a3c2a; }
+  .card { background: #fff; border: 1px solid #e0d4b8; border-radius: 10px;
+          padding: 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 20px; }
+  .card h2 { font-family: Georgia, serif; color: #1e3a28; margin-top: 0; margin-bottom: 4px; font-size: 26px; }
+  .card .subtitle { color: #7a8a75; margin-bottom: 20px; font-size: 14px; }
+  .section-label { font-family: 'Courier New', monospace; font-size: 11px;
+                   text-transform: uppercase; color: #8b4513; letter-spacing: 0.04em;
+                   margin-top: 16px; margin-bottom: 8px; }
+  .rf-choice { border: 1px solid #e0d4b8; border-radius: 8px; padding: 24px;
+               cursor: pointer; background: #fff; min-height: 160px; transition: all 0.15s; }
+  .rf-choice:hover { border-color: #1e3a28; }
+  .rf-choice.selected { border: 3px solid #1e3a28; padding: 22px; }
+  .rf-choice h3 { font-family: Georgia, serif; color: #1e3a28; margin-top: 0; }
+  .rf-choice p { color: #4a3c2a; margin-bottom: 0; font-size: 14px; }
+  .navbar { display: flex; justify-content: space-between; margin-top: 30px; }
+  .btn-primary { background: #1e3a28 !important; border-color: #1e3a28 !important; color: white !important; }
+  .btn-primary:hover { background: #2d5a3d !important; border-color: #2d5a3d !important; }
+  .btn-outline-secondary { color: #4a3c2a !important; border-color: #c9b88a !important; background: transparent !important; }
+  .status-ok { color: #1e3a28; margin-top: 10px; font-weight: 500; }
+"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # UI
+# ─────────────────────────────────────────────────────────────────────────────
+
 ui <- fluidPage(
-  titlePanel("RF-Generator 2.0"),
-  sidebarLayout(
-    sidebarPanel(
-      h3("Step 1: Select Region"),
-      leafletOutput("map", height = "300px"),
-      fileInput("aoi_file", "Optional: Upload AOI Geopackage", accept = c(".gpkg")),
+  tags$head(
+    tags$style(HTML(app_css)),
+    tags$script(HTML("
+      Shiny.addCustomMessageHandler('scroll_top', function(m) { window.scrollTo(0, 0); });
+    "))
+  ),
+  div(class = "app-container",
       
-      h3("Step 2: Select Data Type"),
-      radioButtons("response_type", "What level of response function do you want to generate?",
-                   choices = c("Stand-level Characteristics", "Individual Tree Species"),
-                   selected = "Stand-level Characteristics"),
+      # Persistent header
+      div(class = "hdr",
+          fluidRow(
+            column(5,
+                   tags$input(id = "hvra_name", type = "text",
+                              placeholder = "HVRA common name (required)",
+                              style = "width:100%;margin-bottom:6px;",
+                              onchange = "Shiny.setInputValue('hvra_name', this.value);"),
+                   tags$input(id = "hvra_sci", type = "text",
+                              placeholder = "Scientific name (optional)",
+                              style = "width:100%;",
+                              onchange = "Shiny.setInputValue('hvra_sci', this.value);")
+            ),
+            column(7, div(class = "crumb", uiOutput("breadcrumb", inline = TRUE)))
+          )
+      ),
       
-      h3("Step 3: Select Filtering Criteria"),
-      selectInput("forest_type", "Forest Type", choices = c("All", forest_type_options), multiple = TRUE),
-      selectInput("structure_class", "Structure Class", choices = c("All", structure_class_options), multiple = TRUE),
+      # Details drawer
+      tags$details(class = "details-wrap",
+                   tags$summary("Details (description, authors, assumptions…)"),
+                   div(style = "padding-top:12px;",
+                       textAreaInput("desc", "HVRA description", rows = 2, width = "100%"),
+                       textAreaInput("ecoregion_appl", "Ecoregion applicability", rows = 2, width = "100%"),
+                       textAreaInput("authors_text", "Authors (one per line: name, affiliation)", rows = 3, width = "100%"),
+                       textAreaInput("assumptions", "Assumptions", rows = 3, width = "100%",
+                                     placeholder = "What assumptions were made?"),
+                       textAreaInput("workshop_notes", "Workshop notes", rows = 2, width = "100%"),
+                       textAreaInput("refs", "References", rows = 2, width = "100%")
+                   )
+      ),
       
-      h3("Step 4: Select Ecosystem Components"),
-      uiOutput("ecosystem_components_ui"),
-      
-      h3("Step 5: Assign Importance Weights"),
-      uiOutput("weights_ui"),
-      
-      actionButton("generate", "Generate Response Function")
-    ),
-    mainPanel(
-        h3("Metadata"),
-        textOutput("variant_info"), # Selected variant
-        textOutput("selected_forest_type"), # Selected forest type
-        textOutput("selected_structure_class"), # Selected structure class
-        textOutput("selected_response_type"), # Selected response type
-        textOutput("selected_ecosystem_components"), # Selected ecosystem components
-        h3("Results"),
-        tableOutput("filtered_data"),
-        plotOutput("response_plot")
-    )
+      uiOutput("main_screen")
   )
 )
 
+# ─────────────────────────────────────────────────────────────────────────────
 # Server
+# ─────────────────────────────────────────────────────────────────────────────
+
 server <- function(input, output, session) {
-  values <- reactiveValues(
-    map_variant = NULL,
-    aoi_data = NULL,
-    filtered_data = NULL
+  
+  state <- reactiveValues(
+    screen           = "aoi",
+    aoi_method       = NULL,
+    selected_regions = character(),
+    aoi_stands       = NULL,
+    rf_type          = NULL,
+    selected_species = character(),
+    selected_ecs     = character(),
+    ec_weights       = list(),
+    ec_effects       = list()
   )
   
-  # Reactive for normalized weights
-  normalized_weights <- reactive({
-    req(input$ecosystem_components)
-    user_weights <- sapply(input$ecosystem_components, function(component) {
-      as.numeric(input[[paste0(component, "_weight")]])
-    })
-    # Ensure weights are numeric and calculate simplex weights
-    if (length(user_weights) > 0) {
-      user_weights / sum(user_weights, na.rm = TRUE)
-    } else {
-      NULL
-    }
+  # Reactive that only depends on the specific ecgrp_* checkbox inputs,
+
+  # NOT on every input in the app (fixes flicker on EC picker screen).
+  selected_ecs <- reactive({
+    ecs <- unlist(lapply(EC_GROUP_IDS, function(id) input[[id]]))
+    unique(ecs)
   })
   
-  # Step 1: Clickable Map
-  output$map <- renderLeaflet({
-    color_palette <- colorFactor(palette = "Set1", domain = gpkg_data$FVSVariant)
+  # Navigation ----------------------------------------------------------------
+  nav_to <- function(s) {
+    state$screen <- s
+    session$sendCustomMessage("scroll_top", list())
+  }
+  
+  observeEvent(input$btn_next, {
+    s <- state$screen
+    if (s == "rftype" && isTRUE(state$rf_type == "stand")) { nav_to("ecs"); return() }
+    idx <- which(SCREENS == s)
+    if (length(idx) && idx < length(SCREENS)) nav_to(SCREENS[idx + 1])
+  })
+  
+  observeEvent(input$btn_back, {
+    s <- state$screen
+    if (s == "ecs" && isTRUE(state$rf_type == "stand")) { nav_to("rftype"); return() }
+    idx <- which(SCREENS == s)
+    if (length(idx) && idx > 1) nav_to(SCREENS[idx - 1])
+  })
+  
+  observeEvent(input$btn_reset, {
+    state$screen           <- "aoi"
+    state$aoi_method       <- NULL
+    state$selected_regions <- character()
+    state$aoi_stands       <- NULL
+    state$rf_type          <- NULL
+    state$selected_species <- character()
+    state$selected_ecs     <- character()
+    state$ec_weights       <- list()
+    state$ec_effects       <- list()
+    updateTextInput(session, "hvra_name", value = "")
+    updateTextInput(session, "hvra_sci",  value = "")
+  })
+  
+  observeEvent(input$pick_rftype, { state$rf_type <- input$pick_rftype })
+  
+  # Breadcrumb ----------------------------------------------------------------
+  output$breadcrumb <- renderUI({
+    cur <- state$screen
+    cur_idx <- which(BREADCRUMB_ORDER == cur)
+    if (length(cur_idx) == 0) cur_idx <- 1
+    parts <- lapply(seq_along(BREADCRUMB_ORDER), function(i) {
+      key <- BREADCRUMB_ORDER[i]
+      cls <- if (i < cur_idx) "done" else if (i == cur_idx) "active" else "todo"
+      tags$span(class = cls, STEP_LABELS[[key]])
+    })
+    seps <- rep(list(tags$span(" › ", class = "todo")), length(parts) - 1)
+    tagList(c(rbind(parts[-length(parts)], seps), list(parts[[length(parts)]])))
+  })
+  
+  # ── SCREEN RENDERERS ─────────────────────────────────────────────────────
+  # Defined inside server so they can see `state` and helpers via lexical scope.
+  
+  render_aoi <- function() {
+    div(class = "card",
+        h2("Define your area of interest"),
+        p("Upload a boundary file or select ecoregions on the map.", class = "subtitle"),
+        tabsetPanel(id = "aoi_tabs", type = "tabs",
+                    tabPanel("Upload boundary file",
+                             div(style = "padding:20px 0;",
+                                 fileInput("aoi_file", "Choose .gpkg or .tif file",
+                                           accept = c(".gpkg", ".tif"), width = "100%"),
+                                 uiOutput("aoi_file_status")
+                             )
+                    ),
+                    tabPanel("Select on map",
+                             div(style = "padding:12px 0;",
+                                 leafletOutput("ecoregion_map", height = "400px"),
+                                 div(style = "margin-top:12px;color:#4a3c2a;font-size:13px;",
+                                     uiOutput("selected_regions_text"))
+                             )
+                    )
+        ),
+        div(class = "navbar",
+            div(),
+            actionButton("btn_next", "Next →", class = "btn btn-primary btn-lg")
+        )
+    )
+  }
+  
+  render_filters <- function() {
+    div(class = "card",
+        h2("Filter stands"),
+        p("Narrow to relevant forest types and structure classes. Leave blank to include all.",
+          class = "subtitle"),
+        fluidRow(
+          column(6,
+                 div(class = "section-label", "Forest type"),
+                 checkboxGroupInput("ft_filter", NULL, choices = mock_forest_types)
+          ),
+          column(6,
+                 div(class = "section-label", "Structure class"),
+                 checkboxGroupInput("sc_filter", NULL, choices = mock_structure_classes)
+          )
+        ),
+        div(class = "navbar",
+            actionButton("btn_back", "← Back",  class = "btn btn-outline-secondary btn-lg"),
+            actionButton("btn_next", "Next →",  class = "btn btn-primary btn-lg")
+        )
+    )
+  }
+  
+  render_review <- function() {
+    div(class = "card",
+        h2("Review"),
+        p("Confirm what data will be used before loading.", class = "subtitle"),
+        tableOutput("review_summary"),
+        uiOutput("low_stand_warning"),
+        div(class = "navbar",
+            actionButton("btn_back", "← Back", class = "btn btn-outline-secondary btn-lg"),
+            actionButton("btn_next", "Looks good — load data →", class = "btn btn-primary btn-lg")
+        )
+    )
+  }
+  
+  render_rftype <- function() {
+    selected <- state$rf_type
+    cls_stand   <- paste("rf-choice", if (identical(selected, "stand"))   "selected" else "")
+    cls_species <- paste("rf-choice", if (identical(selected, "species")) "selected" else "")
+    div(class = "card",
+        h2("What is this RF for?"),
+        p("Choose the type of response function you're building.", class = "subtitle"),
+        fluidRow(
+          column(6, div(class = cls_stand,
+                        onclick = "Shiny.setInputValue('pick_rftype', 'stand', {priority: 'event'});",
+                        h3("Stand / habitat characteristics"),
+                        p("Canopy cover, tree diameter, basal area, shrub density — describing forest structure.")
+          )),
+          column(6, div(class = cls_species,
+                        onclick = "Shiny.setInputValue('pick_rftype', 'species', {priority: 'event'});",
+                        h3("Individual tree species"),
+                        p("Stand metrics plus species-specific live TPA and live BA for one or more target species.")
+          ))
+        ),
+        div(class = "navbar",
+            actionButton("btn_back", "← Back", class = "btn btn-outline-secondary btn-lg"),
+            actionButton("btn_next", "Next →", class = "btn btn-primary btn-lg")
+        )
+    )
+  }
+  
+  render_species <- function() {
+    div(class = "card",
+        h2("Select target species"),
+        p("Choose one or more species present in your AOI. Species-specific metrics will be added to the EC list.",
+          class = "subtitle"),
+        checkboxGroupInput("species_picks", NULL,
+                           choices = mock_species, selected = mock_species),
+        div(class = "navbar",
+            actionButton("btn_back", "← Back", class = "btn btn-outline-secondary btn-lg"),
+            actionButton("btn_next", "Next →", class = "btn btn-primary btn-lg")
+        )
+    )
+  }
+  
+  render_ecs <- function() {
+    render_group <- function(df, group_name) {
+      if (nrow(df) == 0) return(NULL)
+      grp_id <- paste0("ecgrp_", tolower(gsub("[^a-z]", "_", tolower(group_name))))
+      unit_part <- if ("unit" %in% names(df)) {
+        ifelse(nzchar(df$unit), paste0(" (", df$unit, ")"), "")
+      } else rep("", nrow(df))
+      div(style = "margin-bottom:18px;",
+          div(class = "section-label", group_name),
+          checkboxGroupInput(
+            grp_id, NULL,
+            choiceNames  = paste0(df$label, unit_part),
+            choiceValues = df$column
+          )
+      )
+    }
     
-    leaflet() %>%
-      addTiles() %>%
-      addPolygons(
-        data = gpkg_data,
-        group = "Variants",
-        fillColor = ~color_palette(FVSVariant),
-        color = "black",
-        weight = 1,
-        opacity = 1,
-        fillOpacity = 0.7,
-        label = ~FVSVarName,
-        layerId = ~FVSLocCode
-      ) %>%
-      addLayersControl(
-        overlayGroups = c("Variants", "AOI"),
-        options = layersControlOptions(collapsed = FALSE)
+    default_ecs  <- ec_labels |> filter(show_default == TRUE)
+    advanced_ecs <- ec_labels |> filter(show_default == FALSE)
+    default_groups  <- split(default_ecs,  default_ecs$subcategory)
+    advanced_groups <- split(advanced_ecs, advanced_ecs$subcategory)
+    
+    div(class = "card",
+        h2("Pick ecosystem components"),
+        p("Select the ECs that matter for this RF. You'll set importance and effect type next.",
+          class = "subtitle"),
+        textInput("ec_search", NULL, placeholder = "🔍 Search ECs (visual only for now)...",
+                  width = "100%"),
+        lapply(names(default_groups), function(g) render_group(default_groups[[g]], g)),
+        tags$hr(),
+        checkboxInput("show_advanced", "Show advanced ECs", value = FALSE),
+        conditionalPanel(
+          condition = "input.show_advanced == true",
+          lapply(names(advanced_groups), function(g) render_group(advanced_groups[[g]], g))
+        ),
+        div(class = "navbar",
+            actionButton("btn_back", "← Back", class = "btn btn-outline-secondary btn-lg"),
+            actionButton("btn_next", "Next →", class = "btn btn-primary btn-lg")
+        )
+    )
+  }
+  
+  render_weights <- function() {
+    picks <- isolate(selected_ecs())
+    body <- if (length(picks) == 0) {
+      div(style = "color:#7a8a75;font-style:italic;padding:20px 0;",
+          "No ECs selected. Go back and pick at least one.")
+    } else {
+      tagList(
+        DT::dataTableOutput("weights_preview"),
+        div(style = "margin-top:16px;color:#7a8a75;font-size:13px;",
+            "Full weights UI (1–5 stepper, effect type pills, range inputs) — wire up next.")
+      )
+    }
+    div(class = "card",
+        h2("Weights & effects"),
+        p("Set importance (1 = low, 5 = critical, ties allowed) and effect direction for each EC.",
+          class = "subtitle"),
+        body,
+        div(class = "navbar",
+            actionButton("btn_back", "← Back",           class = "btn btn-outline-secondary btn-lg"),
+            actionButton("btn_next", "Compute RFs →",    class = "btn btn-primary btn-lg")
+        )
+    )
+  }
+  
+  render_download <- function() {
+    nm      <- input$hvra_name %||% "Unnamed HVRA"
+    sci     <- input$hvra_sci %||% ""
+    name_str <- if (nzchar(sci)) paste0(nm, " (", sci, ")") else nm
+    div(class = "card",
+        h2("Review & download"),
+        p(name_str, class = "subtitle"),
+        tabsetPanel(type = "tabs",
+                    tabPanel("RF outputs",
+                             div(style = "padding:20px 0;",
+                                 p("Weighted RFs across all MgmtIDs and timepoints.", style = "color:#7a8a75;"),
+                                 plotOutput("rf_preview_plot", height = "300px"),
+                                 br(),
+                                 DT::dataTableOutput("rf_preview_table")
+                             )
+                    ),
+                    tabPanel("EC configuration",
+                             div(style = "padding:20px 0;", DT::dataTableOutput("ec_config_table"))
+                    ),
+                    tabPanel("Fact sheet",
+                             div(style = "padding:20px 0;", uiOutput("factsheet_preview"))
+                    )
+        ),
+        div(style = "margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;",
+            downloadButton("dl_rf",        "RF outputs (CSV)",     class = "btn btn-outline-secondary"),
+            downloadButton("dl_ec",        "EC config (CSV)",      class = "btn btn-outline-secondary"),
+            downloadButton("dl_factsheet", "Fact sheet (md)",      class = "btn btn-outline-secondary"),
+            downloadButton("dl_all",       "Download all (zip)",   class = "btn btn-primary")
+        ),
+        div(class = "navbar",
+            actionButton("btn_back",  "← Back",          class = "btn btn-outline-secondary btn-lg"),
+            actionButton("btn_reset", "Start a new RF", class = "btn btn-outline-danger btn-lg")
+        )
+    )
+  }
+  
+  # ── Screen router ─────────────────────────────────────────────────────────
+  output$main_screen <- renderUI({
+    switch(state$screen,
+           "aoi"      = render_aoi(),
+           "filters"  = render_filters(),
+           "review"   = render_review(),
+           "rftype"   = render_rftype(),
+           "species"  = render_species(),
+           "ecs"      = render_ecs(),
+           "weights"  = render_weights(),
+           "download" = render_download(),
+           div("Unknown screen:", state$screen)
+    )
+  })
+  
+  # ── Map + AOI ────────────────────────────────────────────────────────────
+  output$ecoregion_map <- renderLeaflet({
+    leaflet(mock_ecoregions) |>
+      addProviderTiles("CartoDB.Positron") |>
+      setView(lng = -115, lat = 42, zoom = 4) |>
+      addCircleMarkers(
+        ~lng, ~lat, layerId = ~name, label = ~name,
+        radius = 10, fillColor = "#2D6A4F", color = "#1B4D36",
+        weight = 1, fillOpacity = 0.7
       )
   })
   
-  # Add AOI to the map when uploaded
+  observeEvent(input$ecoregion_map_marker_click, {
+    clicked <- input$ecoregion_map_marker_click$id
+    if (is.null(clicked)) return()
+    cur <- state$selected_regions
+    state$selected_regions <- if (clicked %in% cur) setdiff(cur, clicked) else c(cur, clicked)
+  })
+  
+  output$selected_regions_text <- renderUI({
+    regs <- state$selected_regions
+    if (length(regs) == 0) {
+      tags$em("No regions selected yet. Click a marker to select.", style = "color:#7a8a75;")
+    } else {
+      tags$span(tags$strong(length(regs), "selected:"), " ",
+                paste(regs, collapse = ", "))
+    }
+  })
+  
   observeEvent(input$aoi_file, {
-    req(input$aoi_file)
-    values$aoi_data <- st_read(input$aoi_file$datapath)
-    
-    leafletProxy("map") %>%
-      addPolygons(
-        data = values$aoi_data,
-        group = "AOI",
-        color = "blue",
-        weight = 2,
-        opacity = 1,
-        fillOpacity = 0.3,
-        label = ~paste0("AOI: ", input$aoi_file$name)
-      )
+    state$aoi_method <- "file"
+    state$aoi_stands <- 1234
   })
   
-  # Reactive for clicked polygon
-  selected_polygon <- reactiveVal(NULL)
-  
-  observeEvent(input$map_shape_click, {
-    selected_polygon(input$map_shape_click$id)
-  })
-  
-  output$variant_info <- renderText({
-    req(selected_polygon())
-    selected <- gpkg_data[gpkg_data$FVSLocCode == selected_polygon(), ]
-    paste("Selected Variant:", selected$FVSVarName)
-  })
-  
-  # Metadata outputs for user selections
-  output$selected_forest_type <- renderText({
-    req(input$forest_type)
-    paste("Selected Forest Type(s):", paste(input$forest_type, collapse = ", "))
-  })
-  
-  output$selected_structure_class <- renderText({
-    req(input$structure_class)
-    paste("Selected Structure Class(es):", paste(input$structure_class, collapse = ", "))
-  })
-  
-  output$selected_response_type <- renderText({
-    req(input$response_type)
-    paste("Selected Response Type:", input$response_type)
-  })
-  
-  output$selected_ecosystem_components <- renderText({
-    req(input$ecosystem_components)
-    if (length(input$ecosystem_components) == 0) {
-      "No ecosystem components selected."
-    } else {
-      # Retrieve normalized weights
-      simplex_weights <- normalized_weights()
-      
-      # Format output with simplex weights
-      components_with_weights <- mapply(function(component, weight) {
-        paste(component, "(Simplex Weight:", round(weight, 2), ")")
-      }, input$ecosystem_components, simplex_weights)
-      
-      # Combine components into a single output string
-      paste("Selected Ecosystem Component(s):", paste(components_with_weights, collapse = ", "))
+  output$aoi_file_status <- renderUI({
+    if (!is.null(state$aoi_stands) && identical(state$aoi_method, "file")) {
+      div(class = "status-ok",
+          "✓ File loaded — ", tags$strong(state$aoi_stands), " stands matched")
     }
   })
   
-  # Step 4: Ecosystem Components
-  variable_descriptions <- read.csv(here::here('data', 'variable_descriptions.csv'))%>%
-    filter(row_number() >= which(Variable == "Tpa"))
-  
-  output$ecosystem_components_ui <- renderUI({
-    req(variable_descriptions)
-    variable_choices <- setNames(
-      variable_descriptions$Variable, 
-      paste(variable_descriptions$Variable, "-", variable_descriptions$Description)
-    )
-    selectInput(
-      "ecosystem_components", 
-      "Select up to 5 variables", 
-      choices = variable_choices, 
-      multiple = TRUE, 
-      selectize = TRUE
-    )
-  })
-  
-  # Step 4: Min/Max Threshold and Weight Dropdowns
-  output$weights_ui <- renderUI({
-    req(input$ecosystem_components)
-    components <- input$ecosystem_components
-    
-    sliders <- lapply(components, function(component) {
-      fluidRow(
-        column(8, sliderInput(
-          inputId = paste0(component, "_range"),
-          label = paste(component, "Range"),
-          min = 0, max = 100, value = c(20, 80)
-        )),
-        column(4, selectInput(
-          inputId = paste0(component, "_weight"),
-          label = paste(component, "Weight (1 = Least Important, 5 = Most Important)"),
-          choices = c(1, 2, 3, 4, 5),
-          selected = 3
-        ))
+  # ── Review summary ────────────────────────────────────────────────────────
+  output$review_summary <- renderTable({
+    aoi_desc <- if (length(state$selected_regions) > 0)
+      paste(state$selected_regions, collapse = ", ")
+    else if (!is.null(state$aoi_stands)) "Uploaded file"
+    else "Not set"
+    data.frame(
+      Item = c("AOI", "FVS variant", "Forest type filter",
+               "Structure class filter", "Matching stands"),
+      Value = c(
+        aoi_desc,
+        "CR (placeholder)",
+        if (length(input$ft_filter) > 0) paste(input$ft_filter, collapse = ", ") else "All",
+        if (length(input$sc_filter) > 0) paste(input$sc_filter, collapse = ", ") else "All",
+        as.character(state$aoi_stands %||% "—")
       )
-    })
-    do.call(tagList, sliders)
+    )
+  }, striped = TRUE, width = "100%")
+  
+  # ── Weights preview ───────────────────────────────────────────────────────
+  output$weights_preview <- DT::renderDataTable({
+    picks <- selected_ecs()
+    if (length(picks) == 0) return(data.frame(Message = "No ECs selected"))
+    ec_labels |>
+      filter(column %in% picks) |>
+      mutate(Importance = 3, Effect = "Positive") |>
+      select(EC = label, Category = subcategory, Unit = unit, Importance, Effect)
+  }, options = list(dom = 't', pageLength = 50), rownames = FALSE)
+  
+  # ── Download previews ─────────────────────────────────────────────────────
+  output$rf_preview_plot <- renderPlot({
+    dist <- paste0("FIC", 1:6)
+    vals <- c(-0.18, -0.14, -0.09, -0.03, 0.05, 0.11)
+    op <- par(mar = c(5, 5, 3, 2))
+    barplot(vals, names.arg = dist,
+            col = ifelse(vals >= 0, "#1e3a28", "#7a2020"),
+            border = NA, ylim = c(-0.3, 0.3), las = 1,
+            main = "Placeholder RF preview",
+            ylab = "Weighted effect in HVRA value")
+    abline(h = 0, col = "#1e3a28", lwd = 1)
+    par(op)
   })
   
-  # Step 5: Generate Response Function
-  observeEvent(input$generate, {
-    req(values$aoi_data, input$ecosystem_components)
-    
-    forest_filter <- if ("All" %in% input$forest_type) TRUE else values$aoi_data$forest_type %in% input$forest_type
-    structure_filter <- if ("All" %in% input$structure_class) TRUE else values$aoi_data$structure_class %in% input$structure_class
-    
-    filtered <- values$aoi_data %>%
-      filter(forest_filter & structure_filter)
-    
-    components <- input$ecosystem_components
-    filtered <- filtered %>%
-      mutate(across(all_of(components), ~ case_when(
-        . >= input[[paste0(., "_range")]][1] & . <= input[[paste0(., "_range")]][2] ~ . * input[[paste0(., "_weight")]],
-        TRUE ~ NA_real_
-      )))
-    
-    values$filtered_data <- filtered
+  output$rf_preview_table <- DT::renderDataTable({
+    set.seed(42)
+    data.frame(
+      MgmtID = c("BASE","FIC1","FIC2","FIC3","FIC4","FIC5","FIC6","MRCC","MTTH","RMGP"),
+      t0  = round(runif(10, -0.3, 0.1), 3),
+      t5  = round(runif(10, -0.2, 0.2), 3),
+      t10 = round(runif(10, -0.1, 0.3), 3),
+      t20 = round(runif(10, -0.1, 0.4), 3)
+    )
+  }, options = list(dom = 't', pageLength = 20), rownames = FALSE)
+  
+  output$ec_config_table <- DT::renderDataTable({
+    picks <- selected_ecs()
+    if (length(picks) == 0) return(data.frame(Message = "No ECs selected"))
+    ec_labels |>
+      filter(column %in% picks) |>
+      select(EC = label, Category = subcategory, Unit = unit)
+  }, options = list(dom = 't', pageLength = 50), rownames = FALSE)
+  
+  output$factsheet_preview <- renderUI({
+    nm <- input$hvra_name %||% "Unnamed HVRA"
+    HTML(paste0(
+      "<h3>", nm, "</h3>",
+      "<p><strong>Ecoregion:</strong> ",
+      if (length(state$selected_regions) > 0) paste(state$selected_regions, collapse = ", ") else "—",
+      "</p>",
+      "<p><strong>Description:</strong> ", input$desc %||% "—", "</p>",
+      "<p><strong>Assumptions:</strong> ", input$assumptions %||% "—", "</p>",
+      "<p><strong>References:</strong> ", input$refs %||% "—", "</p>"
+    ))
   })
   
-  output$filtered_data <- renderTable({
-    req(values$filtered_data)
-    values$filtered_data
-  })
-  
-  output$response_plot <- renderPlot({
-    req(values$filtered_data)
-    components <- input$ecosystem_components
-    plot_data <- values$filtered_data %>% select(all_of(components))
-    
-    boxplot(plot_data, main = "Response Function by Ecosystem Components")
-  })
+  # Download handlers (placeholders)
+  output$dl_rf <- downloadHandler(
+    filename = function() "rf_outputs.csv",
+    content  = function(file) write.csv(data.frame(placeholder = "RF outputs go here"), file, row.names = FALSE)
+  )
+  output$dl_ec <- downloadHandler(
+    filename = function() "ec_config.csv",
+    content  = function(file) write.csv(data.frame(placeholder = "EC config goes here"), file, row.names = FALSE)
+  )
+  output$dl_factsheet <- downloadHandler(
+    filename = function() "factsheet.md",
+    content  = function(file) writeLines("# Placeholder fact sheet", file)
+  )
+  output$dl_all <- downloadHandler(
+    filename = function() "rf_package.zip",
+    content  = function(file) file.create(file)
+  )
 }
 
-# Run App
 shinyApp(ui, server)

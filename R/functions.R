@@ -1,3 +1,5 @@
+source(here::here("R", "ec_labels.R"))
+
 #' Get TM IDs from an AOI and County Data
 #'
 #' This function retrieves TreeMap (TM) IDs by intersecting an Area of Interest (AOI) with county data.
@@ -18,9 +20,9 @@
 #' @examples
 #' # Example usage
 #' result <- get_tm_ids("path/to/aoi.gpkg", "gpkg", unique_ids_df)
-#' 
+#'
 get_tm_ids <- function(aoi_path, filetype, unique_ids){
-  
+
   county <- sf::read_sf(here::here("data", "tl_2024_western_counties.gpkg"))
   
   # Load and process AOI data
@@ -39,8 +41,8 @@ get_tm_ids <- function(aoi_path, filetype, unique_ids){
   
   # Fetch TM IDs from the S3 bucket
   county_tmids <- aws.s3::get_bucket(
-    bucket = 'vp-open-science',
-    prefix = 'rf-generator-data/rshiny-spatial-data/filtered_tmids_by_county'
+    bucket = S3_BUCKET,
+    prefix = S3_TMIDS_PREFIX
   )
   
   # Parse file paths from the bucket
@@ -64,7 +66,7 @@ get_tm_ids <- function(aoi_path, filetype, unique_ids){
   tm_out <- NULL
   for (i in seq_along(counts)) {
     tm_ids <- aws.s3::s3readRDS(
-      bucket = 'vp-open-science',
+      bucket = S3_BUCKET,
       object = counts[i]
     )
     
@@ -105,9 +107,36 @@ get_tm_ids <- function(aoi_path, filetype, unique_ids){
   # Add variant information and join with unique IDs
   tm_out <- tm_out %>%
     dplyr::mutate(Variant = variant) %>%
+    dplyr::mutate(StandID = as.numeric(StandID)) %>%
     dplyr::left_join(unique_ids, by = c("StandID", "Variant"))
   
   return(tm_out)
+}
+
+
+#' Load Stand-Level Data from S3
+#'
+#' Loads the ALL stand-level RDS for the given variant (CA or CR).
+#' ALL files contain every MgmtID (BASE, FIC1-6, treatments) in one file.
+#'
+#' @param variant "CA" or "CR"
+#' @return A data frame of stand-level data.
+#' @export
+load_stand_data <- function(variant) {
+  s3_object <- if (variant == "CA") S3_CA_STANDLEVEL else S3_CR_STANDLEVEL
+  aws.s3::s3readRDS(bucket = S3_BUCKET, object = s3_object)
+}
+
+#' Load StdStk (Species) Data from S3
+#'
+#' Loads the species-level stock table for the given variant.
+#'
+#' @param variant "CA" or "CR"
+#' @return A data frame of species stock data.
+#' @export
+load_stdstk_data <- function(variant) {
+  s3_object <- if (variant == "CA") S3_CA_STDSTK else S3_CR_STDSTK
+  aws.s3::s3readRDS(bucket = S3_BUCKET, object = s3_object)
 }
 
 
@@ -166,6 +195,86 @@ response_spacer <- function(df, variable_of_interest, mgmtID) {
   return(out)
 }
 
+#' Compute Combined Weighted RF
+#'
+#' For each EC, computes per-stand RF via response_spacer, then applies effect
+#' direction and importance weight. Returns per-stand combined score and a
+#' summary (median across stands per MgmtID x rel.time).
+#'
+#' Effect types:
+#'   Positive — RF used as-is (more is better)
+#'   Negative — RF negated (more is worse)
+#'   Range    — positive contribution when raw value is inside [min, max],
+#'              negative contribution when outside
+#'
+#' @param df Stand-level data (or stdstk_wide) with percent_influence + EC cols.
+#' @param ec_config Data frame with columns: Column, Weight, Effect, Min, Max.
+#' @param treatment_ids Character vector of treatment MgmtIDs.
+#' @return List with two elements: \code{per_stand} (full detail) and
+#'   \code{summary} (median RF per MgmtID x rel.time x EC, plus combined).
+#' @export
+compute_combined_rf <- function(df, ec_config, treatment_ids) {
+  total_weight <- sum(ec_config$Weight)
+
+  per_ec <- lapply(seq_len(nrow(ec_config)), function(i) {
+    ec     <- ec_config$Column[i]
+    wt     <- ec_config$Weight[i]
+    effect <- ec_config$Effect[i]
+    ec_min <- ec_config$Min[i]
+    ec_max <- ec_config$Max[i]
+
+    if (!ec %in% colnames(df)) return(NULL)
+
+    rf <- response_spacer(df, ec, treatment_ids) %>%
+      dplyr::rename(rf_value = 3)
+
+    if (effect == "Negative") {
+      rf <- rf %>% dplyr::mutate(rf_value = -rf_value)
+    } else if (effect == "Range") {
+      raw_vals <- df %>%
+        dplyr::filter(MgmtID %in% treatment_ids) %>%
+        dplyr::select(MgmtID, StandID, rel.time,
+                      dplyr::all_of(ec)) %>%
+        dplyr::rename(raw_val = 4) %>%
+        dplyr::mutate(StandID = as.character(StandID))
+
+      rf <- rf %>%
+        dplyr::mutate(StandID = as.character(StandID)) %>%
+        dplyr::left_join(raw_vals,
+                         by = c("MgmtID", "StandID", "rel.time")) %>%
+        dplyr::mutate(
+          in_range = !is.na(raw_val) &
+            raw_val >= ec_min & raw_val <= ec_max,
+          rf_value = dplyr::if_else(in_range,
+                                     abs(rf_value), -abs(rf_value))
+        ) %>%
+        dplyr::select(-raw_val, -in_range)
+    }
+
+    rf %>% dplyr::mutate(EC = ec, weight = wt,
+                          weighted_rf = rf_value * wt / total_weight)
+  })
+
+  per_ec <- dplyr::bind_rows(per_ec[!vapply(per_ec, is.null, logical(1))])
+
+  # Per-EC summary: median across stands
+  ec_summary <- per_ec %>%
+    dplyr::group_by(EC, MgmtID, rel.time) %>%
+    dplyr::summarise(median_rf = median(rf_value, na.rm = TRUE),
+                     .groups = "drop")
+
+  # Combined score: sum of weighted RFs per stand, then median across stands
+  combined <- per_ec %>%
+    dplyr::group_by(MgmtID, rel.time, StandID) %>%
+    dplyr::summarise(combined_rf = sum(weighted_rf, na.rm = TRUE),
+                     .groups = "drop") %>%
+    dplyr::group_by(MgmtID, rel.time) %>%
+    dplyr::summarise(median_combined_rf = median(combined_rf, na.rm = TRUE),
+                     .groups = "drop")
+
+  list(per_ec = ec_summary, combined = combined)
+}
+
 #' Calculate Maximum Value (Ignoring NA)
 #'
 #' This function calculates the maximum value of a numeric vector, ignoring NA values.
@@ -206,6 +315,7 @@ cleanDF <- function(df) {
 #' Get Filtered Stand Data
 #'
 #' Filters stand-level data based on IDs and appends influence percentages.
+#' Keeps metadata columns plus all EC columns defined in ec_labels.
 #'
 #' @param stand_data_frame A data frame of stand-level data.
 #' @param ids A data frame of StandID and count information.
@@ -219,20 +329,20 @@ get_filtered_stand_data <- function(stand_data_frame, ids) {
       StandID = as.character(StandID),
       percent_influence = count / sum(count, na.rm = TRUE)
     )
-  
+
+  meta_cols <- c("CaseID", "StandID", "MgmtID", "RunTitle", "Variant",
+                 "rel.time", "Year", "Number_of_Strata", "Structure_Class",
+                 "ForTyp", "SizeCls", "StkCls", "percent_influence")
+  ec_cols <- intersect(ec_labels$column, colnames(stand_data_frame))
+  keep_cols <- c(meta_cols, ec_cols)
+
   filtered_data <- stand_data_frame %>%
     dplyr::mutate(StandID = as.character(StandID)) %>%
     dplyr::filter(StandID %in% ids$StandID) %>%
     dplyr::left_join(ids, by = "StandID") %>%
-    dplyr::select(
-      CaseID, StandID, MgmtID, RunTitle, Variant, Year, Number_of_Strata,
-      Structure_Class, ForTyp, SizeCls, StkCls, percent_influence,
-      Tpa, BA, SDI, QMD, MCuFt, Acc, Mort,
-      Surface_Litter, Surface_Duff, Surface_Herb, Surface_Shrub,
-      Standing_Snag_lt3, Standing_Snag_ge3, Hard_snags_total, Total_Cover
-    ) %>%
+    dplyr::select(dplyr::any_of(keep_cols)) %>%
     dplyr::distinct()
-  
+
   return(filtered_data)
 }
 
