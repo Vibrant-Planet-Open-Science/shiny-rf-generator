@@ -33,15 +33,12 @@ EC_GROUP_IDS <- unique(ec_labels$subcategory) |>
   (\(x) gsub("[^a-z]", "_", x))() |>
   (\(x) paste0("ecgrp_", x))()
 
-mock_ecoregions <- data.frame(
-  name    = c("Southern Rockies", "Cascades", "Klamath Mountains",
-              "Sierra Nevada", "Blue Mountains", "Wasatch & Uinta"),
-  biome   = c("Temperate conifer","Temperate conifer","Temperate conifer",
-              "Temperate conifer","Temperate conifer","Montane"),
-  variant = c("CR","CA","CA","CA","CA","CR"),
-  lat     = c(39.5, 47.5, 41.5, 38.5, 45.0, 40.5),
-  lng     = c(-106.5, -121.5, -123.0, -119.5, -118.5, -111.0)
-)
+# Ecoregion polygons for map selection (~1.8MB, RESOLVE 2017 simplified)
+ecoregions_sf <- sf::st_read(here::here("www", "ecoregions_western.geojson"), quiet = TRUE)
+# Western counties shapefile for ecoregion → GEOID intersection
+counties_sf <- sf::st_read(here::here("data", "tl_2024_western_counties.gpkg"), quiet = TRUE)
+# CA counties for variant detection
+ca_county_geoids <- readRDS(here::here("data", "ca_counties.rds"))$GEOID
 
 # Load real filter lookups from S3 (small file, ~3KB)
 all_vars_codes <- aws.s3::s3readRDS(bucket = S3_BUCKET, object = S3_ALL_VARS)
@@ -165,7 +162,8 @@ server <- function(input, output, session) {
     selected_species = character(),
     selected_ecs     = character(),
     ec_weights       = list(),
-    ec_effects       = list()
+    ec_effects       = list(),
+    species_list     = NULL
   )
   
   # Reactive that only depends on the specific ecgrp_* checkbox inputs,
@@ -185,6 +183,25 @@ server <- function(input, output, session) {
   observeEvent(input$btn_next, {
     s <- state$screen
     if (s == "rftype" && isTRUE(state$rf_type == "stand")) { nav_to("ecs"); return() }
+
+    # Load species list when entering species screen (first time only)
+    if (s == "rftype" && isTRUE(state$rf_type == "species") && is.null(state$species_list)) {
+      tryCatch({
+        withProgress(message = "Loading species data (this may take a minute)...", {
+          stdstk <- load_stdstk_data(state$variant)
+          aoi_stand_ids <- as.character(state$freq_table$StandID)
+          stdstk_filtered <- stdstk |>
+            dplyr::filter(as.character(StandID) %in% aoi_stand_ids)
+          species <- sort(unique(stdstk_filtered$Species))
+          species <- species[!species %in% c("All", "")]
+          state$species_list <- species
+        })
+      }, error = function(e) {
+        showNotification(paste("Failed to load species:", e$message),
+                         type = "error", duration = 10)
+      })
+    }
+
     idx <- which(SCREENS == s)
     if (length(idx) && idx < length(SCREENS)) nav_to(SCREENS[idx + 1])
   })
@@ -205,6 +222,7 @@ server <- function(input, output, session) {
     state$variant          <- NULL
     state$rf_type          <- NULL
     state$selected_species <- character()
+    state$species_list     <- NULL
     state$selected_ecs     <- character()
     state$ec_weights       <- list()
     state$ec_effects       <- list()
@@ -320,12 +338,16 @@ server <- function(input, output, session) {
   }
   
   render_species <- function() {
+    sp <- isolate(state$species_list) %||% mock_species
     div(class = "card",
         h2("Select target species"),
         p("Choose one or more species present in your AOI. Species-specific metrics will be added to the EC list.",
           class = "subtitle"),
-        checkboxGroupInput("species_picks", NULL,
-                           choices = mock_species, selected = mock_species),
+        if (length(sp) == 0) {
+          p("No species found in your AOI.", style = "color:#7a8a75;font-style:italic;")
+        } else {
+          checkboxGroupInput("species_picks", NULL, choices = sp)
+        },
         div(class = "navbar",
             actionButton("btn_back", "← Back", class = "btn btn-outline-secondary btn-lg"),
             actionButton("btn_next", "Next →", class = "btn btn-primary btn-lg")
@@ -452,30 +474,126 @@ server <- function(input, output, session) {
   
   # ── Map + AOI ────────────────────────────────────────────────────────────
   output$ecoregion_map <- renderLeaflet({
-    leaflet(mock_ecoregions) |>
+    leaflet(ecoregions_sf) |>
       addProviderTiles("CartoDB.Positron") |>
-      setView(lng = -115, lat = 42, zoom = 4) |>
-      addCircleMarkers(
-        ~lng, ~lat, layerId = ~name, label = ~name,
-        radius = 10, fillColor = "#2D6A4F", color = "#1B4D36",
-        weight = 1, fillOpacity = 0.7
+      setView(lng = -115, lat = 42, zoom = 5) |>
+      addPolygons(
+        group = "eco",
+        fillColor = ~COLOR, fillOpacity = 0.45,
+        color = "#1e3a28", weight = 1,
+        label = ~ECO_NAME,
+        layerId = ~ECO_NAME
       )
   })
-  
-  observeEvent(input$ecoregion_map_marker_click, {
-    clicked <- input$ecoregion_map_marker_click$id
-    if (is.null(clicked)) return()
+
+  observeEvent(input$ecoregion_map_shape_click, {
+    clicked <- input$ecoregion_map_shape_click$id
+    if (is.null(clicked) || clicked == "") return()
     cur <- state$selected_regions
-    state$selected_regions <- if (clicked %in% cur) setdiff(cur, clicked) else c(cur, clicked)
+    if (clicked %in% cur) {
+      state$selected_regions <- setdiff(cur, clicked)
+    } else {
+      state$selected_regions <- c(cur, clicked)
+    }
+
+    # Redraw polygons with selection highlight
+    sel <- state$selected_regions
+    eco <- ecoregions_sf |> dplyr::mutate(.sel = ECO_NAME %in% sel)
+    leafletProxy("ecoregion_map") |>
+      clearGroup("eco") |>
+      addPolygons(
+        data = eco, group = "eco",
+        fillColor   = ~ifelse(.sel, "#1e3a28", COLOR),
+        fillOpacity = ~ifelse(.sel, 0.6, 0.45),
+        color       = ~ifelse(.sel, "#1e3a28", "#1e3a28"),
+        weight      = ~ifelse(.sel, 3, 1),
+        label       = ~ECO_NAME,
+        layerId     = ~ECO_NAME
+      )
+
+    # Build freq_table from selected ecoregions
+    if (length(sel) > 0) {
+      tryCatch({
+        withProgress(message = "Finding stands in selected ecoregions...", {
+          eco_sel <- ecoregions_sf |>
+            dplyr::filter(ECO_NAME %in% sel) |>
+            sf::st_union() |> sf::st_sf() |>
+            sf::st_transform(sf::st_crs(counties_sf))
+
+          aoi_counties <- suppressWarnings(sf::st_intersection(counties_sf, eco_sel))
+          geoids <- unique(aoi_counties$GEOID)
+
+          variant_pct <- sum(geoids %in% ca_county_geoids) / length(geoids)
+          variant <- ifelse(variant_pct >= 0.5, "CA", "CO")
+
+          bucket_contents <- aws.s3::get_bucket(bucket = S3_BUCKET, prefix = S3_TMIDS_PREFIX)
+          files <- sapply(bucket_contents, function(x) x$Key)
+          file_geoids <- sapply(files, function(f) {
+            parts <- strsplit(trimws(basename(f)), "_")[[1]]
+            if (length(parts) >= 2) parts[2] else NA_character_
+          })
+          matched_files <- files[file_geoids %in% geoids]
+
+          tm_out <- NULL
+          for (f in matched_files) {
+            chunk <- aws.s3::s3readRDS(bucket = S3_BUCKET, object = f)
+            colnames(chunk) <- c("lat", "lon", "tm_id")
+            chunk <- chunk |>
+              dplyr::filter(!is.na(tm_id)) |>
+              dplyr::select(tm_id) |>
+              table()
+            chunk <- data.frame(StandID = names(chunk), count = as.numeric(chunk))
+            if (is.null(tm_out)) {
+              tm_out <- chunk
+            } else {
+              tm_out <- chunk |>
+                dplyr::rename(count2 = count) |>
+                dplyr::full_join(tm_out, by = "StandID") |>
+                dplyr::mutate(
+                  count  = dplyr::if_else(is.na(count), 0, count),
+                  count2 = dplyr::if_else(is.na(count2), 0, count2),
+                  count  = count + count2
+                ) |>
+                dplyr::select(-count2)
+            }
+          }
+
+          if (!is.null(tm_out) && nrow(tm_out) > 0) {
+            tm_out <- tm_out |>
+              dplyr::mutate(Variant = variant, StandID = as.numeric(StandID)) |>
+              dplyr::left_join(stand_lookup, by = c("StandID", "Variant"))
+            state$freq_table <- tm_out
+            state$aoi_stands <- nrow(tm_out)
+            state$variant    <- variant
+            state$aoi_method <- "map"
+          }
+        })
+      }, error = function(e) {
+        showNotification(paste("Ecoregion processing failed:", e$message),
+                         type = "error", duration = 10)
+      })
+    } else {
+      state$freq_table <- NULL
+      state$aoi_stands <- NULL
+      state$variant    <- NULL
+      state$aoi_method <- NULL
+    }
   })
-  
+
   output$selected_regions_text <- renderUI({
     regs <- state$selected_regions
     if (length(regs) == 0) {
-      tags$em("No regions selected yet. Click a marker to select.", style = "color:#7a8a75;")
+      tags$em("No regions selected yet. Click an ecoregion to select.", style = "color:#7a8a75;")
     } else {
-      tags$span(tags$strong(length(regs), "selected:"), " ",
-                paste(regs, collapse = ", "))
+      tagList(
+        tags$span(tags$strong(length(regs), "selected:"), " ",
+                  paste(regs, collapse = ", ")),
+        if (!is.null(state$aoi_stands)) {
+          div(class = "status-ok",
+              paste0(format(state$aoi_stands, big.mark = ","),
+                     " stands — variant: ", state$variant))
+        }
+      )
     }
   })
   
