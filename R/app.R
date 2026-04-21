@@ -13,6 +13,7 @@ library(shiny)
 library(leaflet)
 library(dplyr)
 library(tibble)
+library(tidyr)
 library(DT)
 
 
@@ -163,8 +164,10 @@ server <- function(input, output, session) {
     selected_ecs     = character(),
     ec_weights       = list(),
     ec_effects       = list(),
+    ec_ranges        = list(),
     species_list     = NULL,
-    filtered_data    = NULL
+    filtered_data    = NULL,
+    rf_results       = NULL
   )
   
   # Reactive that only depends on the specific ecgrp_* checkbox inputs,
@@ -224,6 +227,47 @@ server <- function(input, output, session) {
       })
     }
 
+    # Collect weights/effects/ranges when leaving weights screen
+    if (s == "weights") {
+      picks <- isolate(selected_ecs())
+      wts <- list(); fxs <- list(); rngs <- list()
+      for (col in picks) {
+        safe <- gsub("[^a-zA-Z0-9]", "_", col)
+        wts[[col]]  <- as.integer(input[[paste0("wt_", safe)]] %||% 3L)
+        fxs[[col]]  <- input[[paste0("fx_", safe)]] %||% "Positive"
+        rng_min <- input[[paste0("rng_min_", safe)]]
+        rng_max <- input[[paste0("rng_max_", safe)]]
+        rngs[[col]] <- c(
+          if (is.null(rng_min) || is.na(rng_min)) NA_real_ else rng_min,
+          if (is.null(rng_max) || is.na(rng_max)) NA_real_ else rng_max
+        )
+      }
+      state$ec_weights <- wts
+      state$ec_effects <- fxs
+      state$ec_ranges  <- rngs
+
+      # Compute RFs
+      tryCatch({
+        withProgress(message = "Computing response functions...", {
+          ec_conf <- data.frame(
+            Column = picks,
+            Weight = vapply(picks, function(c) as.integer(wts[[c]] %||% 3L), integer(1)),
+            Effect = vapply(picks, function(c) fxs[[c]] %||% "Positive", character(1)),
+            Min    = vapply(picks, function(c) rngs[[c]][1] %||% NA_real_, numeric(1)),
+            Max    = vapply(picks, function(c) rngs[[c]][2] %||% NA_real_, numeric(1)),
+            stringsAsFactors = FALSE
+          )
+          treatment_ids <- mgmt_labels$mgmt_id[mgmt_labels$type != "baseline"]
+          state$rf_results <- compute_combined_rf(
+            state$filtered_data, ec_conf, treatment_ids
+          )
+        })
+      }, error = function(e) {
+        showNotification(paste("RF computation failed:", e$message),
+                         type = "error", duration = 10)
+      })
+    }
+
     idx <- which(SCREENS == s)
     if (length(idx) && idx < length(SCREENS)) nav_to(SCREENS[idx + 1])
   })
@@ -249,6 +293,8 @@ server <- function(input, output, session) {
     state$selected_ecs     <- character()
     state$ec_weights       <- list()
     state$ec_effects       <- list()
+    state$ec_ranges        <- list()
+    state$rf_results       <- NULL
     updateTextInput(session, "hvra_name", value = "")
     updateTextInput(session, "hvra_sci",  value = "")
   })
@@ -435,15 +481,45 @@ server <- function(input, output, session) {
   
   render_weights <- function() {
     picks <- isolate(selected_ecs())
-    body <- if (length(picks) == 0) {
-      div(style = "color:#7a8a75;font-style:italic;padding:20px 0;",
-          "No ECs selected. Go back and pick at least one.")
+    if (length(picks) == 0) {
+      body <- div(style = "color:#7a8a75;font-style:italic;padding:20px 0;",
+                  "No ECs selected. Go back and pick at least one.")
     } else {
-      tagList(
-        DT::dataTableOutput("weights_preview"),
-        div(style = "margin-top:16px;color:#7a8a75;font-size:13px;",
-            "Full weights UI (1–5 stepper, effect type pills, range inputs) — wire up next.")
-      )
+      ec_rows <- lapply(picks, function(col) {
+        info <- ec_labels[ec_labels$column == col, ]
+        lbl  <- if (nrow(info) > 0) info$label[1] else col
+        cat  <- if (nrow(info) > 0) info$subcategory[1] else ""
+        safe <- gsub("[^a-zA-Z0-9]", "_", col)
+        div(style = "border:1px solid #e0d4b8;border-radius:8px;padding:14px 18px;margin-bottom:10px;background:#fff;",
+            fluidRow(
+              column(4,
+                     tags$strong(lbl),
+                     tags$span(style = "display:inline-block;background:#e8dcc8;color:#4a3c2a;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:8px;", cat)
+              ),
+              column(2,
+                     div(class = "section-label", "Importance"),
+                     selectInput(paste0("wt_", safe), NULL, choices = 1:5, selected = 3, width = "80px")
+              ),
+              column(3,
+                     div(class = "section-label", "Effect"),
+                     radioButtons(paste0("fx_", safe), NULL,
+                                  choices = c("Positive", "Negative", "Range"),
+                                  selected = "Positive", inline = TRUE)
+              ),
+              column(3,
+                     conditionalPanel(
+                       condition = sprintf("input.fx_%s == 'Range'", safe),
+                       div(class = "section-label", "Range"),
+                       fluidRow(
+                         column(6, numericInput(paste0("rng_min_", safe), "Min", value = NA, width = "100%")),
+                         column(6, numericInput(paste0("rng_max_", safe), "Max", value = NA, width = "100%"))
+                       )
+                     )
+              )
+            )
+        )
+      })
+      body <- do.call(tagList, ec_rows)
     }
     div(class = "card",
         h2("Weights & effects"),
@@ -714,35 +790,55 @@ server <- function(input, output, session) {
   
   # ── Download previews ─────────────────────────────────────────────────────
   output$rf_preview_plot <- renderPlot({
-    dist <- paste0("FIC", 1:6)
-    vals <- c(-0.18, -0.14, -0.09, -0.03, 0.05, 0.11)
-    op <- par(mar = c(5, 5, 3, 2))
-    barplot(vals, names.arg = dist,
+    res <- state$rf_results
+    if (is.null(res)) {
+      plot.new(); text(0.5, 0.5, "No RF results yet", col = "#7a8a75"); return()
+    }
+    comb <- res$combined
+    # Show combined RF at rel.time == 0 (or nearest) per MgmtID
+    t0 <- comb |> dplyr::filter(rel.time == min(abs(rel.time)))
+    if (nrow(t0) == 0) t0 <- comb |> dplyr::slice_head(n = 1, by = MgmtID)
+    vals <- t0$median_combined_rf
+    names(vals) <- t0$MgmtID
+    op <- par(mar = c(7, 5, 3, 2))
+    barplot(vals,
             col = ifelse(vals >= 0, "#1e3a28", "#7a2020"),
-            border = NA, ylim = c(-0.3, 0.3), las = 1,
-            main = "Placeholder RF preview",
-            ylab = "Weighted effect in HVRA value")
+            border = NA, las = 2,
+            main = "Combined weighted RF by treatment",
+            ylab = "Weighted effect on HVRA")
     abline(h = 0, col = "#1e3a28", lwd = 1)
     par(op)
   })
-  
+
   output$rf_preview_table <- DT::renderDataTable({
-    set.seed(42)
-    data.frame(
-      MgmtID = c("BASE","FIC1","FIC2","FIC3","FIC4","FIC5","FIC6","MRCC","MTTH","RMGP"),
-      t0  = round(runif(10, -0.3, 0.1), 3),
-      t5  = round(runif(10, -0.2, 0.2), 3),
-      t10 = round(runif(10, -0.1, 0.3), 3),
-      t20 = round(runif(10, -0.1, 0.4), 3)
-    )
-  }, options = list(dom = 't', pageLength = 20), rownames = FALSE)
+    res <- state$rf_results
+    if (is.null(res)) return(data.frame(Message = "No RF results yet"))
+    # Pivot per-EC results wide: rows = MgmtID × rel.time, columns = ECs
+    wide <- res$per_ec |>
+      tidyr::pivot_wider(names_from = EC, values_from = median_rf)
+    # Join combined score
+    wide |>
+      dplyr::left_join(
+        res$combined |> dplyr::select(MgmtID, rel.time, Combined = median_combined_rf),
+        by = c("MgmtID", "rel.time")
+      )
+  }, options = list(dom = 't', pageLength = 50, scrollX = TRUE), rownames = FALSE)
   
   output$ec_config_table <- DT::renderDataTable({
     picks <- selected_ecs()
     if (length(picks) == 0) return(data.frame(Message = "No ECs selected"))
+    wts <- state$ec_weights; fxs <- state$ec_effects; rngs <- state$ec_ranges
     ec_labels |>
       filter(column %in% picks) |>
-      select(EC = label, Category = subcategory, Unit = unit)
+      dplyr::rowwise() |>
+      dplyr::mutate(
+        Importance = as.integer(wts[[column]] %||% 3L),
+        Effect     = fxs[[column]] %||% "Positive",
+        Range      = if (!is.null(rngs[[column]]) && !all(is.na(rngs[[column]])))
+                       paste(rngs[[column]], collapse = " – ") else "—"
+      ) |>
+      dplyr::ungroup() |>
+      select(EC = label, Category = subcategory, Importance, Effect, Range)
   }, options = list(dom = 't', pageLength = 50), rownames = FALSE)
   
   output$factsheet_preview <- renderUI({
@@ -758,22 +854,87 @@ server <- function(input, output, session) {
     ))
   })
   
-  # Download handlers (placeholders)
+  # ── Download handlers ──────────────────────────────────────────────────
+  build_rf_csv <- function() {
+    res <- state$rf_results
+    if (is.null(res)) return(data.frame(Message = "No results"))
+    wide <- res$per_ec |> tidyr::pivot_wider(names_from = EC, values_from = median_rf)
+    wide |> dplyr::left_join(
+      res$combined |> dplyr::select(MgmtID, rel.time, Combined_RF = median_combined_rf),
+      by = c("MgmtID", "rel.time")
+    )
+  }
+
+  build_ec_csv <- function() {
+    picks <- isolate(selected_ecs())
+    if (length(picks) == 0) return(data.frame())
+    wts <- state$ec_weights; fxs <- state$ec_effects; rngs <- state$ec_ranges
+    data.frame(
+      Column     = picks,
+      Label      = vapply(picks, function(c) {
+        r <- ec_labels$label[ec_labels$column == c]; if (length(r)) r[1] else c
+      }, character(1)),
+      Importance = vapply(picks, function(c) as.integer(wts[[c]] %||% 3L), integer(1)),
+      Effect     = vapply(picks, function(c) fxs[[c]] %||% "Positive", character(1)),
+      Min        = vapply(picks, function(c) if (!is.null(rngs[[c]])) rngs[[c]][1] else NA_real_, numeric(1)),
+      Max        = vapply(picks, function(c) if (!is.null(rngs[[c]])) rngs[[c]][2] else NA_real_, numeric(1)),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  build_factsheet <- function() {
+    nm   <- input$hvra_name %||% "Unnamed HVRA"
+    sci  <- input$hvra_sci %||% ""
+    desc <- input$desc %||% ""
+    eco  <- input$ecoregion_appl %||% ""
+    auth <- input$authors_text %||% ""
+    assu <- input$assumptions %||% ""
+    refs <- input$refs %||% ""
+    notes <- input$workshop_notes %||% ""
+    ec_tbl <- build_ec_csv()
+    ec_md <- if (nrow(ec_tbl) > 0) {
+      paste0("| ", ec_tbl$Label, " | ", ec_tbl$Importance, " | ", ec_tbl$Effect, " |",
+             collapse = "\n")
+    } else "No ECs selected"
+    paste(
+      paste0("# ", nm),
+      if (nzchar(sci)) paste0("*", sci, "*") else "",
+      "", "## Description", desc,
+      "", "## Ecoregion applicability", eco,
+      "", "## Authors", auth,
+      "", "## Assumptions", assu,
+      "", "## EC Configuration",
+      "| EC | Importance | Effect |", "| --- | --- | --- |", ec_md,
+      "", "## References", refs,
+      if (nzchar(notes)) paste("", "## Workshop Notes", notes) else "",
+      sep = "\n"
+    )
+  }
+
   output$dl_rf <- downloadHandler(
-    filename = function() "rf_outputs.csv",
-    content  = function(file) write.csv(data.frame(placeholder = "RF outputs go here"), file, row.names = FALSE)
+    filename = function() paste0("rf_outputs_", Sys.Date(), ".csv"),
+    content  = function(file) write.csv(build_rf_csv(), file, row.names = FALSE)
   )
   output$dl_ec <- downloadHandler(
-    filename = function() "ec_config.csv",
-    content  = function(file) write.csv(data.frame(placeholder = "EC config goes here"), file, row.names = FALSE)
+    filename = function() paste0("ec_config_", Sys.Date(), ".csv"),
+    content  = function(file) write.csv(build_ec_csv(), file, row.names = FALSE)
   )
   output$dl_factsheet <- downloadHandler(
-    filename = function() "factsheet.md",
-    content  = function(file) writeLines("# Placeholder fact sheet", file)
+    filename = function() paste0("factsheet_", Sys.Date(), ".md"),
+    content  = function(file) writeLines(build_factsheet(), file)
   )
   output$dl_all <- downloadHandler(
-    filename = function() "rf_package.zip",
-    content  = function(file) file.create(file)
+    filename = function() paste0("rf_package_", Sys.Date(), ".zip"),
+    content  = function(file) {
+      tmpdir <- tempdir()
+      rf_f <- file.path(tmpdir, "rf_outputs.csv")
+      ec_f <- file.path(tmpdir, "ec_config.csv")
+      fs_f <- file.path(tmpdir, "factsheet.md")
+      write.csv(build_rf_csv(), rf_f, row.names = FALSE)
+      write.csv(build_ec_csv(), ec_f, row.names = FALSE)
+      writeLines(build_factsheet(), fs_f)
+      zip(file, c(rf_f, ec_f, fs_f), flags = "-j")
+    }
   )
 }
 
