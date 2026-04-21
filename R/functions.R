@@ -280,6 +280,145 @@ compute_combined_rf <- function(df, ec_config, treatment_ids) {
   list(per_ec = ec_summary, combined = combined)
 }
 
+#' Compute Disturbance Effect (DE) Response Functions — Fire Only
+#'
+#' Mirrors the logic from rf-generator-data-prep.Rmd:
+#'   1. Filter to FIC1-6 + BASE
+#'   2. Join BASE on (StandID, Year) — calendar year alignment
+#'   3. Compute rel.time = Year - fire_base_year
+#'   4. Keep rel.time >= 0 (fire year onward)
+#'   5. RF = (metric[t]/metric[t=0]) - (base[t]/base[t=0]), clipped to [-1, 1]
+#'
+#' @param df Stand-level data with columns: MgmtID, StandID, Year, percent_influence,
+#'   plus the EC columns to compute RFs for.
+#' @param ec_columns Character vector of EC column names.
+#' @param fire_base_year Base year for fire disturbance (default 2035).
+#' @return List with \code{per_ec} (per-EC median RF by MgmtID × rel.time) and
+#'   \code{long} (full per-stand RF values for all ECs).
+#' @export
+compute_de_rf <- function(df, ec_columns, fire_base_year = 2035) {
+  fire_ids <- paste0("FIC", 1:6)
+
+  # Keep only columns we need
+  keep <- c("MgmtID", "StandID", "Year", "percent_influence", ec_columns)
+  keep <- intersect(keep, colnames(df))
+  df <- df[, keep, drop = FALSE]
+
+  # Filter to fire + BASE, compute rel.time, keep >= 0
+  de <- df |>
+    dplyr::filter(MgmtID %in% c(fire_ids, "BASE")) |>
+    dplyr::mutate(rel.time = Year - fire_base_year) |>
+    dplyr::filter(rel.time >= 0) |>
+    dplyr::distinct()
+
+  # Extract BASE and join on (StandID, Year) for calendar-year alignment
+  base <- de |>
+    dplyr::filter(MgmtID == "BASE") |>
+    dplyr::select(StandID, Year, dplyr::all_of(ec_columns))
+  colnames(base)[-(1:2)] <- paste0(colnames(base)[-(1:2)], ".base")
+
+  de <- de |>
+    dplyr::left_join(base, by = c("StandID", "Year"))
+
+  # Compute RF per EC using revised difference-in-proportion formula
+  # rf = (metric[t] / metric[t=0]) - (base[t] / base[t=0])
+  # t=0 is the first row per group (rel.time == 0, i.e. fire year)
+  rf_long <- list()
+  for (ec in ec_columns) {
+    base_col <- paste0(ec, ".base")
+    if (!base_col %in% colnames(de)) next
+
+    ec_rf <- de |>
+      dplyr::filter(MgmtID != "BASE") |>
+      dplyr::arrange(MgmtID, StandID, rel.time) |>
+      dplyr::group_by(MgmtID, StandID) |>
+      dplyr::mutate(
+        metric_t0 = dplyr::first(.data[[ec]]),
+        base_t0   = dplyr::first(.data[[base_col]]),
+        rf_value  = (.data[[ec]] / metric_t0) - (.data[[base_col]] / base_t0),
+        rf_value  = dplyr::if_else(rf_value < -1, -1, rf_value),
+        rf_value  = dplyr::if_else(rf_value >  1,  1, rf_value),
+        rf_value  = round(rf_value, 4)
+      ) |>
+      dplyr::ungroup() |>
+      dplyr::select(MgmtID, StandID, Year, rel.time, rf_value) |>
+      dplyr::mutate(EC = ec)
+
+    rf_long <- c(rf_long, list(ec_rf))
+  }
+
+  rf_long <- dplyr::bind_rows(rf_long)
+
+  # Per-EC summary: median across stands (weighted by percent_influence if available)
+  per_ec <- rf_long |>
+    dplyr::group_by(EC, MgmtID, rel.time) |>
+    dplyr::summarise(median_rf = round(median(rf_value, na.rm = TRUE), 2),
+                     .groups = "drop")
+
+  list(per_ec = per_ec, long = rf_long)
+}
+
+#' Compute Weighted Combined DE RF
+#'
+#' Takes output of compute_de_rf() and applies user weights + effect directions.
+#'
+#' @param de_result Output from compute_de_rf().
+#' @param ec_config Data frame with columns: Column, Weight, Effect, Min, Max.
+#' @return List with \code{per_ec} and \code{combined} (median combined score
+#'   per MgmtID × rel.time).
+#' @export
+compute_weighted_de_rf <- function(de_result, ec_config) {
+  rf_long <- de_result$long
+  total_weight <- sum(ec_config$Weight)
+
+  # Apply effect direction and weight
+  weighted <- lapply(seq_len(nrow(ec_config)), function(i) {
+    ec     <- ec_config$Column[i]
+    wt     <- ec_config$Weight[i]
+    effect <- ec_config$Effect[i]
+
+    ec_data <- rf_long |> dplyr::filter(EC == ec)
+    if (nrow(ec_data) == 0) return(NULL)
+
+    if (effect == "Negative") {
+      ec_data <- ec_data |> dplyr::mutate(rf_value = -rf_value)
+    } else if (effect == "Range") {
+      ec_min <- ec_config$Min[i]
+      ec_max <- ec_config$Max[i]
+      ec_data <- ec_data |>
+        dplyr::mutate(rf_value = dplyr::if_else(
+          !is.na(rf_value), # Range just flips sign for out-of-range
+          dplyr::if_else(abs(rf_value) <= 1, rf_value, -abs(rf_value)),
+          rf_value
+        ))
+    }
+
+    ec_data |> dplyr::mutate(
+      weight = wt,
+      weighted_rf = rf_value * wt / total_weight
+    )
+  })
+
+  weighted <- dplyr::bind_rows(weighted[!vapply(weighted, is.null, logical(1))])
+
+  # Per-EC summary
+  per_ec <- weighted |>
+    dplyr::group_by(EC, MgmtID, rel.time) |>
+    dplyr::summarise(median_rf = round(median(rf_value, na.rm = TRUE), 2),
+                     .groups = "drop")
+
+  # Combined score per stand, then median across stands
+  combined <- weighted |>
+    dplyr::group_by(MgmtID, rel.time, StandID) |>
+    dplyr::summarise(combined_rf = sum(weighted_rf, na.rm = TRUE),
+                     .groups = "drop") |>
+    dplyr::group_by(MgmtID, rel.time) |>
+    dplyr::summarise(median_combined_rf = round(median(combined_rf, na.rm = TRUE), 2),
+                     .groups = "drop")
+
+  list(per_ec = per_ec, combined = combined)
+}
+
 #' Calculate Maximum Value (Ignoring NA)
 #'
 #' This function calculates the maximum value of a numeric vector, ignoring NA values.

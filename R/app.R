@@ -14,6 +14,7 @@ library(leaflet)
 library(dplyr)
 library(tibble)
 library(tidyr)
+library(plotly)
 library(DT)
 
 
@@ -246,7 +247,7 @@ server <- function(input, output, session) {
       state$ec_effects <- fxs
       state$ec_ranges  <- rngs
 
-      # Compute RFs
+      # Compute fire (DE) RFs using calendar-year alignment
       tryCatch({
         withProgress(message = "Computing response functions...", {
           ec_conf <- data.frame(
@@ -257,10 +258,8 @@ server <- function(input, output, session) {
             Max    = vapply(picks, function(c) rngs[[c]][2] %||% NA_real_, numeric(1)),
             stringsAsFactors = FALSE
           )
-          treatment_ids <- mgmt_labels$mgmt_id[mgmt_labels$type != "baseline"]
-          state$rf_results <- compute_combined_rf(
-            state$filtered_data, ec_conf, treatment_ids
-          )
+          de_raw <- compute_de_rf(state$filtered_data, picks, fire_base_year = 2035)
+          state$rf_results <- compute_weighted_de_rf(de_raw, ec_conf)
         })
       }, error = function(e) {
         showNotification(paste("RF computation failed:", e$message),
@@ -543,9 +542,24 @@ server <- function(input, output, session) {
         tabsetPanel(type = "tabs",
                     tabPanel("RF outputs",
                              div(style = "padding:20px 0;",
-                                 p("Weighted RFs across all MgmtIDs and timepoints.", style = "color:#7a8a75;"),
-                                 plotOutput("rf_preview_plot", height = "300px"),
-                                 br(),
+                                 tabsetPanel(id = "rf_plot_tabs", type = "pills",
+                                   tabPanel("Bar plot",
+                                     div(style = "padding:12px 0;",
+                                         fluidRow(
+                                           column(4, uiOutput("rf_year_selector")),
+                                           column(8)
+                                         ),
+                                         plotly::plotlyOutput("rf_bar_plot", height = "350px")
+                                     )
+                                   ),
+                                   tabPanel("Time series",
+                                     div(style = "padding:12px 0;",
+                                         plotly::plotlyOutput("rf_ts_plot", height = "400px")
+                                     )
+                                   )
+                                 ),
+                                 tags$hr(),
+                                 div(class = "section-label", "Full results table"),
                                  DT::dataTableOutput("rf_preview_table")
                              )
                     ),
@@ -788,41 +802,104 @@ server <- function(input, output, session) {
       select(EC = label, Category = subcategory, Unit = unit, Importance, Effect)
   }, options = list(dom = 't', pageLength = 50), rownames = FALSE)
   
-  # ── Download previews ─────────────────────────────────────────────────────
-  output$rf_preview_plot <- renderPlot({
+  # ── RF output plots (plotly, exclude rel.time == 0) ──────────────────────
+  rf_plot_data <- reactive({
     res <- state$rf_results
-    if (is.null(res)) {
-      plot.new(); text(0.5, 0.5, "No RF results yet", col = "#7a8a75"); return()
+    if (is.null(res)) return(NULL)
+    list(
+      combined = res$combined |>
+        dplyr::filter(rel.time >= 0) |>
+        dplyr::mutate(median_combined_rf = round(median_combined_rf, 2)),
+      per_ec = res$per_ec |>
+        dplyr::filter(rel.time >= 0) |>
+        dplyr::mutate(median_rf = round(median_rf, 2))
+    )
+  })
+
+  output$rf_year_selector <- renderUI({
+    d <- rf_plot_data()
+    if (is.null(d)) return(NULL)
+    times <- sort(unique(d$combined$rel.time))
+    times <- times[times > 0]
+    selectInput("rf_year", "Relative year", choices = times,
+                selected = times[1], width = "150px")
+  })
+
+  output$rf_bar_plot <- plotly::renderPlotly({
+    d <- rf_plot_data()
+    if (is.null(d)) return(plotly::plotly_empty())
+    yr <- as.numeric(input$rf_year %||% 1)
+    comb <- d$combined |> dplyr::filter(rel.time == yr)
+    if (nrow(comb) == 0) return(plotly::plotly_empty())
+    comb <- comb |> dplyr::mutate(
+      bar_color = ifelse(median_combined_rf >= 0, "#1e3a28", "#7a2020")
+    )
+    plotly::plot_ly(comb, x = ~MgmtID, y = ~median_combined_rf,
+                    type = "bar", marker = list(color = ~bar_color),
+                    hovertemplate = "%{x}: %{y}<extra></extra>") |>
+      plotly::layout(
+        title = paste0("Combined weighted RF — year ", yr),
+        xaxis = list(title = "", categoryorder = "trace"),
+        yaxis = list(title = "Weighted effect on HVRA", zeroline = TRUE),
+        plot_bgcolor = "#ffffff", paper_bgcolor = "#ffffff"
+      )
+  })
+
+  output$rf_ts_plot <- plotly::renderPlotly({
+    d <- rf_plot_data()
+    if (is.null(d)) return(plotly::plotly_empty())
+    comb <- d$combined |> dplyr::arrange(MgmtID, rel.time)
+    mgmts <- unique(comb$MgmtID)
+
+    # FIC colors: light red → dark red
+    fic_ids <- grep("^FIC", mgmts, value = TRUE) |> sort()
+    fic_reds <- colorRampPalette(c("#ffb3b3", "#8b0000"))(max(length(fic_ids), 1))
+    # Treatment colors: non-red palette
+    trt_ids <- setdiff(mgmts, fic_ids)
+    trt_cols <- c("#1e3a28", "#2d6a4f", "#8b4513", "#4a6fa5", "#6b4c9a", "#2a7f62")
+    mgmt_colors <- setNames(
+      c(setNames(fic_reds, fic_ids),
+        setNames(trt_cols[seq_along(trt_ids)], trt_ids)),
+      c(fic_ids, trt_ids)
+    )
+
+    p <- plotly::plot_ly()
+    for (mgmt in mgmts) {
+      dd <- comb |> dplyr::filter(MgmtID == mgmt)
+      p <- p |> plotly::add_trace(
+        data = dd, x = ~rel.time, y = ~median_combined_rf,
+        type = "scatter", mode = "lines+markers", name = mgmt,
+        line = list(color = mgmt_colors[[mgmt]]),
+        marker = list(color = mgmt_colors[[mgmt]]),
+        hovertemplate = paste0(mgmt, " yr %{x}: %{y}<extra></extra>")
+      )
     }
-    comb <- res$combined
-    # Show combined RF at rel.time == 0 (or nearest) per MgmtID
-    t0 <- comb |> dplyr::filter(rel.time == min(abs(rel.time)))
-    if (nrow(t0) == 0) t0 <- comb |> dplyr::slice_head(n = 1, by = MgmtID)
-    vals <- t0$median_combined_rf
-    names(vals) <- t0$MgmtID
-    op <- par(mar = c(7, 5, 3, 2))
-    barplot(vals,
-            col = ifelse(vals >= 0, "#1e3a28", "#7a2020"),
-            border = NA, las = 2,
-            main = "Combined weighted RF by treatment",
-            ylab = "Weighted effect on HVRA")
-    abline(h = 0, col = "#1e3a28", lwd = 1)
-    par(op)
+    p |> plotly::layout(
+      title = "Combined weighted RF over time",
+      xaxis = list(title = "Relative year"),
+      yaxis = list(title = "Weighted effect on HVRA", zeroline = TRUE),
+      plot_bgcolor = "#ffffff", paper_bgcolor = "#ffffff",
+      hovermode = "x unified"
+    )
   })
 
   output$rf_preview_table <- DT::renderDataTable({
     res <- state$rf_results
     if (is.null(res)) return(data.frame(Message = "No RF results yet"))
-    # Pivot per-EC results wide: rows = MgmtID × rel.time, columns = ECs
     wide <- res$per_ec |>
+      dplyr::filter(rel.time >= 0) |>
+      dplyr::mutate(median_rf = round(median_rf, 2)) |>
       tidyr::pivot_wider(names_from = EC, values_from = median_rf)
-    # Join combined score
     wide |>
       dplyr::left_join(
-        res$combined |> dplyr::select(MgmtID, rel.time, Combined = median_combined_rf),
+        res$combined |>
+          dplyr::filter(rel.time >= 0) |>
+          dplyr::mutate(Combined = round(median_combined_rf, 2)) |>
+          dplyr::select(MgmtID, rel.time, Combined),
         by = c("MgmtID", "rel.time")
-      )
-  }, options = list(dom = 't', pageLength = 50, scrollX = TRUE), rownames = FALSE)
+      ) |>
+      dplyr::arrange(MgmtID, rel.time)
+  }, options = list(dom = 'frtip', pageLength = 200, scrollX = TRUE), rownames = FALSE)
   
   output$ec_config_table <- DT::renderDataTable({
     picks <- selected_ecs()
