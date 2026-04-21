@@ -1,3 +1,34 @@
+# =============================================================================
+# RF Generator v2 — Shiny App
+# =============================================================================
+#
+# 8-screen wizard for building wildlife habitat Response Functions (RFs).
+# Users define an AOI, filter stands, pick ecosystem components, set weights,
+# and download RF outputs as CSV/markdown.
+#
+# Architecture:
+#   - Single renderUI screen router (output$main_screen) switches between
+#     8 render_*() functions based on state$screen
+#   - Each render_*() builds one full-page card with its own nav buttons
+#   - state (reactiveValues) holds all wizard state; screens read via isolate()
+#     to avoid re-rendering the entire page on every input change
+#
+# For styling/aesthetics:
+#   - All CSS lives in the `app_css` string below — edit colors, fonts, spacing there
+#   - CSS classes: .card, .hdr, .crumb, .details-wrap, .section-label,
+#     .rf-choice, .navbar, .status-ok, .subtitle
+#   - Plotly chart styling: search for plotly::layout() calls
+#   - DataTables styling: search for DT::renderDataTable options
+#   - Color palette constants: forest green #1e3a28, sienna #8b4513,
+#     parchment #faf5ed, muted text #7a8a75, warm border #e0d4b8
+#
+# Data flow:
+#   AOI (upload or map) → freq_table (StandIDs + counts)
+#   → filter by ForestType/StructureClass → load StandLevel from S3
+#   → select ECs → set weights/effects → compute_de_rf() → plots + downloads
+#
+# =============================================================================
+
 source(here::here("R", "functions.R"))
 source(here::here("R", "ec_labels.R"))
 
@@ -14,31 +45,52 @@ library(plotly)
 library(DT)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # Constants & helpers
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
+# Screen order — the wizard progresses through these left to right.
+# "species" is conditionally skipped when rf_type == "stand".
 SCREENS <- c("aoi", "filters", "review", "rftype", "species", "ecs", "weights", "download")
+
+# Labels shown in the breadcrumb. "species" is omitted from breadcrumb
+# because it's conditional — the breadcrumb always shows 7 steps.
 STEP_LABELS <- c(aoi="AOI", filters="Filters", review="Review", rftype="RF Type",
                  ecs="ECs", weights="Weights", download="Download")
 BREADCRUMB_ORDER <- c("aoi", "filters", "review", "rftype", "ecs", "weights", "download")
 
+# Null-coalescing operator: returns `b` if `a` is NULL, empty, or ""
 `%||%` <- function(a, b) if (is.null(a) || length(a) == 0 || identical(a, "")) b else a
 
-# Pre-compute EC checkbox group IDs (matches IDs generated in render_ecs)
+# Pre-compute the Shiny input IDs for EC checkbox groups.
+# These match the IDs generated in render_ecs() → render_group().
+# Used by selected_ecs() reactive to read only these inputs (not all inputs).
 EC_GROUP_IDS <- unique(ec_labels$subcategory) |>
   tolower() |>
   (\(x) gsub("[^a-z]", "_", x))() |>
   (\(x) paste0("ecgrp_", x))()
 
-# Ecoregion polygons for map selection (~1.8MB, RESOLVE 2017 simplified)
+
+# =============================================================================
+# Startup data — loaded once when the app starts (small files only)
+# =============================================================================
+
+# RESOLVE Ecoregions 2017, filtered to western US and simplified.
+# Used by the "Select on map" tab on the AOI screen.
+# Built by scripts/prep_ecoregions.R — see that file to regenerate.
 ecoregions_sf <- sf::st_read(here::here("www", "ecoregions_western.geojson"), quiet = TRUE)
-# Western counties shapefile for ecoregion → GEOID intersection
+
+# Western US counties shapefile — used to intersect ecoregion selections
+# with county boundaries, then look up per-county TreeMap stand IDs from S3.
 counties_sf <- sf::st_read(here::here("data", "tl_2024_western_counties.gpkg"), quiet = TRUE)
-# CA counties for variant detection
+
+# California county GEOIDs — used for variant detection.
+# If ≥50% of AOI counties are in CA, variant = "CA"; otherwise "CR".
 ca_county_geoids <- readRDS(here::here("data", "ca_counties.rds"))$GEOID
 
-# Load real filter lookups from S3 (small file, ~3KB)
+# Forest type and structure class lookup — loaded from S3 (~3KB).
+# Used as global fallback for filter checkboxes; the actual choices are
+# narrowed to AOI-specific values when freq_table is available.
 all_vars_codes <- aws.s3::s3readRDS(bucket = S3_BUCKET, object = S3_ALL_VARS)
 
 forest_types <- all_vars_codes |>
@@ -53,15 +105,36 @@ structure_classes <- all_vars_codes |>
   dplyr::pull(readable_values) |>
   trimws()
 
-# Stand metadata lookup (used by get_tm_ids for AOI → StandID join)
+# Stand metadata lookup — maps StandID+Variant → Forest_Type, Structure_Class, etc.
+# Passed to get_tm_ids() which joins it with TreeMap IDs from the AOI.
 stand_lookup <- readRDS(here::here("data", "unique_stand_data.rds"))
 stand_lookup <- stand_lookup[complete.cases(stand_lookup), ]
-mock_species           <- c("Pinus ponderosa (PP)","Pseudotsuga menziesii (DF)",
-                            "Pinus albicaulis (WB)","Populus tremuloides (AS)")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Inline styles
-# ─────────────────────────────────────────────────────────────────────────────
+# Placeholder species list — shown only if real species data hasn't loaded yet.
+# Replaced with AOI-filtered species from S3 StdStk data when the user
+# navigates to the species screen.
+mock_species <- c("Pinus ponderosa (PP)", "Pseudotsuga menziesii (DF)",
+                  "Pinus albicaulis (WB)", "Populus tremuloides (AS)")
+
+
+# =============================================================================
+# Inline CSS
+# =============================================================================
+# All visual styling lives here. Edit this string to change the look and feel.
+#
+# Key classes for Alister:
+#   .app-container — outer wrapper, controls max-width and centering
+#   .hdr           — dark green persistent header bar
+#   .crumb         — breadcrumb text (monospace); .done/.active/.todo for states
+#   .details-wrap  — collapsible metadata drawer below header
+#   .card          — white card container for each wizard screen
+#   .subtitle      — muted description text below card h2
+#   .section-label — uppercase sienna label (e.g. "FOREST TYPE", "IMPORTANCE")
+#   .rf-choice     — clickable card for RF type selection (stand vs species)
+#   .navbar        — flex row for Back/Next buttons at bottom of each card
+#   .status-ok     — green success text (e.g. "✓ File loaded — 1,234 stands")
+#   .btn-primary   — dark green filled button
+#   .btn-outline-secondary — outline button with warm border
 
 app_css <- "
   body { background: #faf5ed; font-family: 'Helvetica Neue', Arial, sans-serif; color: #1e3a28; }
@@ -95,20 +168,28 @@ app_css <- "
   .status-ok { color: #1e3a28; margin-top: 10px; font-weight: 500; }
 "
 
-# ─────────────────────────────────────────────────────────────────────────────
-# UI
-# ─────────────────────────────────────────────────────────────────────────────
+
+# =============================================================================
+# UI — persistent header + screen router + details drawer
+# =============================================================================
+# The page is a simple fluidPage (not page_fillable) so content scrolls naturally.
+# The header and details drawer are always visible; the main_screen uiOutput
+# swaps between wizard screens.
 
 ui <- fluidPage(
   tags$head(
     tags$style(HTML(app_css)),
+    # Custom JS handler: scrolls to top when navigating between screens
     tags$script(HTML("
       Shiny.addCustomMessageHandler('scroll_top', function(m) { window.scrollTo(0, 0); });
     "))
   ),
   div(class = "app-container",
-      
-      # Persistent header
+
+      # ── Persistent header ────────────────────────────────────────────────
+      # Always visible. Contains HVRA name/scientific name inputs and breadcrumb.
+      # Uses raw HTML inputs (not Shiny textInput) for tighter styling control.
+      # The onchange handler pushes values to Shiny via setInputValue.
       div(class = "hdr",
           fluidRow(
             column(5,
@@ -124,10 +205,12 @@ ui <- fluidPage(
             column(7, div(class = "crumb", uiOutput("breadcrumb", inline = TRUE)))
           )
       ),
-      
-      # Details drawer
+
+      # ── Collapsible details drawer ──────────────────────────────────────
+      # Metadata fields that persist across all screens. Initially collapsed.
+      # Uses native HTML <details> element for collapse without JS.
       tags$details(class = "details-wrap",
-                   tags$summary("Details (description, authors, assumptions…)"),
+                   tags$summary("Details (description, authors, assumptions\u2026)"),
                    div(style = "padding-top:12px;",
                        textAreaInput("desc", "HVRA description", rows = 2, width = "100%"),
                        textAreaInput("ecoregion_appl", "Ecoregion applicability", rows = 2, width = "100%"),
@@ -138,59 +221,72 @@ ui <- fluidPage(
                        textAreaInput("refs", "References", rows = 2, width = "100%")
                    )
       ),
-      
+
+      # ── Main screen area ────────────────────────────────────────────────
+      # This single uiOutput swaps between all 8 wizard screens.
+      # Controlled by state$screen via the switch() in the server.
       uiOutput("main_screen")
   )
 )
 
-# ─────────────────────────────────────────────────────────────────────────────
+
+# =============================================================================
 # Server
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 server <- function(input, output, session) {
-  
-  state <- reactiveValues(
-    screen           = "aoi",
-    aoi_method       = NULL,
-    selected_regions = character(),
-    aoi_stands       = NULL,
-    freq_table       = NULL,
-    variant          = NULL,
-    rf_type          = NULL,
-    selected_species = character(),
-    selected_ecs     = character(),
-    ec_weights       = list(),
-    ec_effects       = list(),
-    ec_ranges        = list(),
-    species_list     = NULL,
-    filtered_data    = NULL,
-    rf_results       = NULL
-  )
-  
-  # Reactive that only depends on the specific ecgrp_* checkbox inputs,
 
-  # NOT on every input in the app (fixes flicker on EC picker screen).
+  # ── Wizard state ──────────────────────────────────────────────────────────
+  # All wizard data lives here. Screens read these values (often via isolate)
+  # and the btn_next/btn_back handlers update them.
+  state <- reactiveValues(
+    screen           = "aoi",       # Current screen name (key into SCREENS)
+    aoi_method       = NULL,        # "file" or "map"
+    selected_regions = character(),  # Ecoregion names selected on map
+    aoi_stands       = NULL,        # Total stand count from AOI
+    freq_table       = NULL,        # Data frame: StandID, count, Variant, Forest_Type, etc.
+    variant          = NULL,        # "CA" or "CR" — determined from AOI county overlap
+    rf_type          = NULL,        # "stand" or "species"
+    selected_species = character(),  # Species codes selected by user
+    selected_ecs     = character(),  # EC column names selected by user
+    ec_weights       = list(),      # Named list: ec_column → integer 1-5
+    ec_effects       = list(),      # Named list: ec_column → "Positive"/"Negative"/"Range"
+    ec_ranges        = list(),      # Named list: ec_column → c(min, max) or c(NA, NA)
+    species_list     = NULL,        # Character vector of species in AOI (loaded from S3)
+    filtered_data    = NULL,        # Filtered StandLevel data frame (loaded from S3)
+    rf_results       = NULL         # Output of compute_weighted_de_rf(): list(per_ec, combined)
+  )
+
+  # ── Selected ECs reactive ─────────────────────────────────────────────────
+  # Reads ONLY the ecgrp_* checkbox inputs (not every input in the app).
+  # This prevents the EC picker screen from flickering when checkboxes change.
+  # See EC_GROUP_IDS above for the specific input IDs.
   selected_ecs <- reactive({
     ecs <- unlist(lapply(EC_GROUP_IDS, function(id) input[[id]]))
     unique(ecs)
   })
-  
-  # Navigation ----------------------------------------------------------------
+
+  # ── Navigation helpers ────────────────────────────────────────────────────
+  # nav_to() changes the active screen and scrolls to top.
   nav_to <- function(s) {
     state$screen <- s
     session$sendCustomMessage("scroll_top", list())
   }
-  
+
+  # ── Forward navigation (Next / Compute RFs / Looks good) ─────────────────
+  # This handler does double duty: it advances the screen AND triggers
+  # data loading at key transition points (review→rftype, rftype→species).
   observeEvent(input$btn_next, {
     s <- state$screen
 
-    # Load filtered StandLevel data when leaving review screen
+    # -- Leaving review screen: load StandLevel data from S3 -----------------
+    # This is the big load (~750MB). Only runs once; cached in state$filtered_data.
     if (s == "review" && is.null(state$filtered_data)) {
       req(state$variant, state$freq_table)
       tryCatch({
         withProgress(message = "Loading stand data (this may take a minute)...", {
           stand_raw <- load_stand_data(state$variant)
-          # Apply filter selections to freq_table
+          # Apply user's forest type / structure class filters to freq_table
           ft <- state$freq_table
           if (length(input$ft_filter) > 0 && "Forest_Type" %in% names(ft))
             ft <- ft |> dplyr::filter(trimws(Forest_Type) %in% input$ft_filter)
@@ -204,9 +300,10 @@ server <- function(input, output, session) {
       })
     }
 
+    # -- Skip species screen if user chose "stand" RF type -------------------
     if (s == "rftype" && isTRUE(state$rf_type == "stand")) { nav_to("ecs"); return() }
 
-    # Load species list when entering species screen (first time only)
+    # -- Entering species screen: load StdStk from S3 (first time only) -----
     if (s == "rftype" && isTRUE(state$rf_type == "species") && is.null(state$species_list)) {
       tryCatch({
         withProgress(message = "Loading species data (this may take a minute)...", {
@@ -224,7 +321,7 @@ server <- function(input, output, session) {
       })
     }
 
-    # Collect weights/effects/ranges when leaving weights screen
+    # -- Leaving weights screen: collect settings and compute RFs ------------
     if (s == "weights") {
       picks <- isolate(selected_ecs())
       wts <- list(); fxs <- list(); rngs <- list()
@@ -243,7 +340,8 @@ server <- function(input, output, session) {
       state$ec_effects <- fxs
       state$ec_ranges  <- rngs
 
-      # Compute fire (DE) RFs using calendar-year alignment
+      # Compute fire (DE) RFs using calendar-year alignment.
+      # See compute_de_rf() in functions.R and docs/timing_assumptions.md.
       tryCatch({
         withProgress(message = "Computing response functions...", {
           ec_conf <- data.frame(
@@ -263,17 +361,21 @@ server <- function(input, output, session) {
       })
     }
 
+    # Advance to next screen
     idx <- which(SCREENS == s)
     if (length(idx) && idx < length(SCREENS)) nav_to(SCREENS[idx + 1])
   })
-  
+
+  # ── Back navigation ───────────────────────────────────────────────────────
   observeEvent(input$btn_back, {
     s <- state$screen
+    # Skip species screen going backwards too
     if (s == "ecs" && isTRUE(state$rf_type == "stand")) { nav_to("rftype"); return() }
     idx <- which(SCREENS == s)
     if (length(idx) && idx > 1) nav_to(SCREENS[idx - 1])
   })
-  
+
+  # ── Reset (start over) ───────────────────────────────────────────────────
   observeEvent(input$btn_reset, {
     state$screen           <- "aoi"
     state$aoi_method       <- NULL
@@ -293,10 +395,13 @@ server <- function(input, output, session) {
     updateTextInput(session, "hvra_name", value = "")
     updateTextInput(session, "hvra_sci",  value = "")
   })
-  
+
+  # RF type card click handler (stand vs species)
   observeEvent(input$pick_rftype, { state$rf_type <- input$pick_rftype })
-  
-  # Breadcrumb ----------------------------------------------------------------
+
+  # ── Breadcrumb ──────────────────────────────────────────────────────────
+  # Shows 7 steps with › separators. Current step is bold white (.active),
+  # past steps are gold (.done), future steps are muted (.todo).
   output$breadcrumb <- renderUI({
     cur <- state$screen
     cur_idx <- which(BREADCRUMB_ORDER == cur)
@@ -306,13 +411,22 @@ server <- function(input, output, session) {
       cls <- if (i < cur_idx) "done" else if (i == cur_idx) "active" else "todo"
       tags$span(class = cls, STEP_LABELS[[key]])
     })
-    seps <- rep(list(tags$span(" › ", class = "todo")), length(parts) - 1)
+    seps <- rep(list(tags$span(" \u203a ", class = "todo")), length(parts) - 1)
     tagList(c(rbind(parts[-length(parts)], seps), list(parts[[length(parts)]])))
   })
-  
-  # ── SCREEN RENDERERS ─────────────────────────────────────────────────────
-  # Defined inside server so they can see `state` and helpers via lexical scope.
-  
+
+
+  # =========================================================================
+  # Screen renderers
+  # =========================================================================
+  # Each render_*() function returns a complete card div for one wizard screen.
+  # They are called from output$main_screen via switch(state$screen, ...).
+  # They use isolate() when reading reactive values to prevent the screen
+  # router from re-rendering on every input change.
+
+  # ── Screen 1: AOI ───────────────────────────────────────────────────────
+  # Two tabs: upload a .gpkg/.tif file, or click ecoregions on a leaflet map.
+  # Both paths produce a freq_table (StandID → count) stored in state.
   render_aoi <- function() {
     div(class = "card",
         h2("Define your area of interest"),
@@ -335,13 +449,18 @@ server <- function(input, output, session) {
         ),
         div(class = "navbar",
             div(),
-            actionButton("btn_next", "Next →", class = "btn btn-primary btn-lg")
+            actionButton("btn_next", "Next \u2192", class = "btn btn-primary btn-lg")
         )
     )
   }
-  
+
+  # ── Screen 2: Filters ──────────────────────────────────────────────────
+  # Checkboxes for forest type and structure class. Choices are populated
+  # from the AOI's freq_table (only types/classes present in the user's stands).
+  # Leaving checkboxes blank means "include all".
   render_filters <- function() {
     ft <- isolate(state$freq_table)
+    # Build AOI-specific choices (fall back to global list if no freq_table)
     if (!is.null(ft) && "Forest_Type" %in% names(ft)) {
       ft_choices <- sort(unique(trimws(ft$Forest_Type)))
       ft_choices <- ft_choices[!is.na(ft_choices) & nzchar(ft_choices)]
@@ -369,12 +488,15 @@ server <- function(input, output, session) {
           )
         ),
         div(class = "navbar",
-            actionButton("btn_back", "← Back",  class = "btn btn-outline-secondary btn-lg"),
-            actionButton("btn_next", "Next →",  class = "btn btn-primary btn-lg")
+            actionButton("btn_back", "\u2190 Back",  class = "btn btn-outline-secondary btn-lg"),
+            actionButton("btn_next", "Next \u2192",  class = "btn btn-primary btn-lg")
         )
     )
   }
-  
+
+  # ── Screen 3: Review ───────────────────────────────────────────────────
+  # Summary table showing AOI, variant, filters, and matching stand count.
+  # "Looks good" button triggers the big S3 data load (see btn_next handler).
   render_review <- function() {
     div(class = "card",
         h2("Review"),
@@ -382,12 +504,16 @@ server <- function(input, output, session) {
         tableOutput("review_summary"),
         uiOutput("low_stand_warning"),
         div(class = "navbar",
-            actionButton("btn_back", "← Back", class = "btn btn-outline-secondary btn-lg"),
-            actionButton("btn_next", "Looks good — load data →", class = "btn btn-primary btn-lg")
+            actionButton("btn_back", "\u2190 Back", class = "btn btn-outline-secondary btn-lg"),
+            actionButton("btn_next", "Looks good \u2014 load data \u2192", class = "btn btn-primary btn-lg")
         )
     )
   }
-  
+
+  # ── Screen 4: RF Type ──────────────────────────────────────────────────
+  # Two clickable cards: "Stand / habitat characteristics" or "Individual
+  # tree species". Uses raw JS onclick to set input$pick_rftype.
+  # The .rf-choice CSS class handles hover/selected states.
   render_rftype <- function() {
     selected <- state$rf_type
     cls_stand   <- paste("rf-choice", if (identical(selected, "stand"))   "selected" else "")
@@ -399,7 +525,7 @@ server <- function(input, output, session) {
           column(6, div(class = cls_stand,
                         onclick = "Shiny.setInputValue('pick_rftype', 'stand', {priority: 'event'});",
                         h3("Stand / habitat characteristics"),
-                        p("Canopy cover, tree diameter, basal area, shrub density — describing forest structure.")
+                        p("Canopy cover, tree diameter, basal area, shrub density \u2014 describing forest structure.")
           )),
           column(6, div(class = cls_species,
                         onclick = "Shiny.setInputValue('pick_rftype', 'species', {priority: 'event'});",
@@ -408,12 +534,15 @@ server <- function(input, output, session) {
           ))
         ),
         div(class = "navbar",
-            actionButton("btn_back", "← Back", class = "btn btn-outline-secondary btn-lg"),
-            actionButton("btn_next", "Next →", class = "btn btn-primary btn-lg")
+            actionButton("btn_back", "\u2190 Back", class = "btn btn-outline-secondary btn-lg"),
+            actionButton("btn_next", "Next \u2192", class = "btn btn-primary btn-lg")
         )
     )
   }
-  
+
+  # ── Screen 5: Species picker (conditional) ─────────────────────────────
+  # Only shown when rf_type == "species". Lists species present in the AOI,
+  # loaded from StdStk data on S3. Falls back to mock_species if not loaded.
   render_species <- function() {
     sp <- isolate(state$species_list) %||% mock_species
     div(class = "card",
@@ -426,15 +555,21 @@ server <- function(input, output, session) {
           checkboxGroupInput("species_picks", NULL, choices = sp)
         },
         div(class = "navbar",
-            actionButton("btn_back", "← Back", class = "btn btn-outline-secondary btn-lg"),
-            actionButton("btn_next", "Next →", class = "btn btn-primary btn-lg")
+            actionButton("btn_back", "\u2190 Back", class = "btn btn-outline-secondary btn-lg"),
+            actionButton("btn_next", "Next \u2192", class = "btn btn-primary btn-lg")
         )
     )
   }
-  
+
+  # ── Screen 6: EC picker ────────────────────────────────────────────────
+  # Checkboxes for ecosystem components, grouped by subcategory.
+  # Default ECs (show_default=TRUE in ec_labels) shown first; advanced ECs
+  # hidden behind a toggle. EC definitions live in R/ec_labels.R.
   render_ecs <- function() {
+    # Helper: renders one subcategory group of EC checkboxes
     render_group <- function(df, group_name) {
       if (nrow(df) == 0) return(NULL)
+      # Input ID matches pattern used by EC_GROUP_IDS and selected_ecs()
       grp_id <- paste0("ecgrp_", tolower(gsub("[^a-z]", "_", tolower(group_name))))
       unit_part <- if ("unit" %in% names(df)) {
         ifelse(nzchar(df$unit), paste0(" (", df$unit, ")"), "")
@@ -448,32 +583,40 @@ server <- function(input, output, session) {
           )
       )
     }
-    
+
     default_ecs  <- ec_labels |> filter(show_default == TRUE)
     advanced_ecs <- ec_labels |> filter(show_default == FALSE)
     default_groups  <- split(default_ecs,  default_ecs$subcategory)
     advanced_groups <- split(advanced_ecs, advanced_ecs$subcategory)
-    
+
     div(class = "card",
         h2("Pick ecosystem components"),
         p("Select the ECs that matter for this RF. You'll set importance and effect type next.",
           class = "subtitle"),
-        textInput("ec_search", NULL, placeholder = "🔍 Search ECs (visual only for now)...",
+        textInput("ec_search", NULL, placeholder = "\U0001F50D Search ECs (visual only for now)...",
                   width = "100%"),
         lapply(names(default_groups), function(g) render_group(default_groups[[g]], g)),
         tags$hr(),
         checkboxInput("show_advanced", "Show advanced ECs", value = FALSE),
+        # conditionalPanel uses client-side JS — no server round-trip
         conditionalPanel(
           condition = "input.show_advanced == true",
           lapply(names(advanced_groups), function(g) render_group(advanced_groups[[g]], g))
         ),
         div(class = "navbar",
-            actionButton("btn_back", "← Back", class = "btn btn-outline-secondary btn-lg"),
-            actionButton("btn_next", "Next →", class = "btn btn-primary btn-lg")
+            actionButton("btn_back", "\u2190 Back", class = "btn btn-outline-secondary btn-lg"),
+            actionButton("btn_next", "Next \u2192", class = "btn btn-primary btn-lg")
         )
     )
   }
-  
+
+  # ── Screen 7: Weights & effects ────────────────────────────────────────
+  # One row per selected EC with:
+  #   - EC label + subcategory badge
+  #   - Importance dropdown (1-5, default 3)
+  #   - Effect type radio: Positive / Negative / Range
+  #   - Conditional min/max inputs when Range is selected
+  # Input IDs use a "safe" version of the column name (non-alphanumeric → _).
   render_weights <- function() {
     picks <- isolate(selected_ecs())
     if (length(picks) == 0) {
@@ -484,11 +627,13 @@ server <- function(input, output, session) {
         info <- ec_labels[ec_labels$column == col, ]
         lbl  <- if (nrow(info) > 0) info$label[1] else col
         cat  <- if (nrow(info) > 0) info$subcategory[1] else ""
+        # Safe ID: replace non-alphanumeric chars with _ (for Shiny input IDs)
         safe <- gsub("[^a-zA-Z0-9]", "_", col)
         div(style = "border:1px solid #e0d4b8;border-radius:8px;padding:14px 18px;margin-bottom:10px;background:#fff;",
             fluidRow(
               column(4,
                      tags$strong(lbl),
+                     # Subcategory badge
                      tags$span(style = "display:inline-block;background:#e8dcc8;color:#4a3c2a;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:8px;", cat)
               ),
               column(2,
@@ -502,6 +647,7 @@ server <- function(input, output, session) {
                                   selected = "Positive", inline = TRUE)
               ),
               column(3,
+                     # Range min/max inputs — only visible when "Range" is selected
                      conditionalPanel(
                        condition = sprintf("input.fx_%s == 'Range'", safe),
                        div(class = "section-label", "Range"),
@@ -522,12 +668,15 @@ server <- function(input, output, session) {
           class = "subtitle"),
         body,
         div(class = "navbar",
-            actionButton("btn_back", "← Back",           class = "btn btn-outline-secondary btn-lg"),
-            actionButton("btn_next", "Compute RFs →",    class = "btn btn-primary btn-lg")
+            actionButton("btn_back", "\u2190 Back",           class = "btn btn-outline-secondary btn-lg"),
+            actionButton("btn_next", "Compute RFs \u2192",    class = "btn btn-primary btn-lg")
         )
     )
   }
-  
+
+  # ── Screen 8: Review & download ────────────────────────────────────────
+  # Three tabs: RF outputs (bar + timeseries plots + table), EC config, fact sheet.
+  # Four download buttons: RF CSV, EC config CSV, fact sheet MD, zip of all three.
   render_download <- function() {
     nm      <- input$hvra_name %||% "Unnamed HVRA"
     sci     <- input$hvra_sci %||% ""
@@ -536,6 +685,7 @@ server <- function(input, output, session) {
         h2("Review & download"),
         p(name_str, class = "subtitle"),
         tabsetPanel(type = "tabs",
+                    # -- RF outputs tab: plotly bar + timeseries, then data table --
                     tabPanel("RF outputs",
                              div(style = "padding:20px 0;",
                                  tabsetPanel(id = "rf_plot_tabs", type = "pills",
@@ -559,13 +709,16 @@ server <- function(input, output, session) {
                                  DT::dataTableOutput("rf_preview_table")
                              )
                     ),
+                    # -- EC configuration tab --
                     tabPanel("EC configuration",
                              div(style = "padding:20px 0;", DT::dataTableOutput("ec_config_table"))
                     ),
+                    # -- Fact sheet preview tab --
                     tabPanel("Fact sheet",
                              div(style = "padding:20px 0;", uiOutput("factsheet_preview"))
                     )
         ),
+        # Download buttons row
         div(style = "margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;",
             downloadButton("dl_rf",        "RF outputs (CSV)",     class = "btn btn-outline-secondary"),
             downloadButton("dl_ec",        "EC config (CSV)",      class = "btn btn-outline-secondary"),
@@ -573,13 +726,16 @@ server <- function(input, output, session) {
             downloadButton("dl_all",       "Download all (zip)",   class = "btn btn-primary")
         ),
         div(class = "navbar",
-            actionButton("btn_back",  "← Back",          class = "btn btn-outline-secondary btn-lg"),
+            actionButton("btn_back",  "\u2190 Back",          class = "btn btn-outline-secondary btn-lg"),
             actionButton("btn_reset", "Start a new RF", class = "btn btn-outline-danger btn-lg")
         )
     )
   }
-  
-  # ── Screen router ─────────────────────────────────────────────────────────
+
+  # ── Screen router ─────────────────────────────────────────────────────
+  # This is the central UI switch. When state$screen changes (via nav_to),
+  # the matching render_*() function is called and its output replaces
+  # the previous screen content.
   output$main_screen <- renderUI({
     switch(state$screen,
            "aoi"      = render_aoi(),
@@ -593,8 +749,15 @@ server <- function(input, output, session) {
            div("Unknown screen:", state$screen)
     )
   })
-  
-  # ── Map + AOI ────────────────────────────────────────────────────────────
+
+
+  # =========================================================================
+  # Screen 1 server logic: AOI (map + upload)
+  # =========================================================================
+
+  # ── Ecoregion map ─────────────────────────────────────────────────────
+  # Renders RESOLVE ecoregion polygons colored by their native COLOR column.
+  # Click a polygon to toggle selection (fills dark green when selected).
   output$ecoregion_map <- renderLeaflet({
     leaflet(ecoregions_sf) |>
       addProviderTiles("CartoDB.Positron") |>
@@ -608,6 +771,10 @@ server <- function(input, output, session) {
       )
   })
 
+  # ── Ecoregion click handler ───────────────────────────────────────────
+  # Toggles the clicked ecoregion in state$selected_regions, redraws the map
+  # with highlighting, then runs the county intersection → tmid pipeline
+  # to build freq_table (same shape as file upload produces).
   observeEvent(input$ecoregion_map_shape_click, {
     clicked <- input$ecoregion_map_shape_click$id
     if (is.null(clicked) || clicked == "") return()
@@ -618,7 +785,7 @@ server <- function(input, output, session) {
       state$selected_regions <- c(cur, clicked)
     }
 
-    # Redraw polygons with selection highlight
+    # Redraw polygons — selected ones get dark green fill + thicker border
     sel <- state$selected_regions
     eco <- ecoregions_sf |> dplyr::mutate(.sel = ECO_NAME %in% sel)
     leafletProxy("ecoregion_map") |>
@@ -633,29 +800,35 @@ server <- function(input, output, session) {
         layerId     = ~ECO_NAME
       )
 
-    # Build freq_table from selected ecoregions
+    # Build freq_table from selected ecoregions via county intersection
     if (length(sel) > 0) {
       tryCatch({
         withProgress(message = "Finding stands in selected ecoregions...", {
+          # Dissolve selected ecoregion polygons into one shape
           eco_sel <- ecoregions_sf |>
             dplyr::filter(ECO_NAME %in% sel) |>
             sf::st_union() |> sf::st_sf() |>
             sf::st_transform(sf::st_crs(counties_sf))
 
+          # Intersect with counties to get GEOIDs
           aoi_counties <- suppressWarnings(sf::st_intersection(counties_sf, eco_sel))
           geoids <- unique(aoi_counties$GEOID)
 
+          # Determine variant: CA if ≥50% of counties are in California
           variant_pct <- sum(geoids %in% ca_county_geoids) / length(geoids)
           variant <- ifelse(variant_pct >= 0.5, "CA", "CR")
 
+          # Fetch per-county TreeMap ID files from S3
           bucket_contents <- aws.s3::get_bucket(bucket = S3_BUCKET, prefix = S3_TMIDS_PREFIX)
           files <- sapply(bucket_contents, function(x) x$Key)
+          # Extract GEOID from filenames (pattern: CountyName_GEOID_tmids_only.rds)
           file_geoids <- sapply(files, function(f) {
             parts <- strsplit(trimws(basename(f)), "_")[[1]]
             if (length(parts) >= 2) parts[2] else NA_character_
           })
           matched_files <- files[file_geoids %in% geoids]
 
+          # Read and combine TreeMap IDs across all matched county files
           tm_out <- NULL
           for (f in matched_files) {
             chunk <- aws.s3::s3readRDS(bucket = S3_BUCKET, object = f)
@@ -680,6 +853,7 @@ server <- function(input, output, session) {
             }
           }
 
+          # Join with stand metadata to get Forest_Type, Structure_Class, etc.
           if (!is.null(tm_out) && nrow(tm_out) > 0) {
             tm_out <- tm_out |>
               dplyr::mutate(Variant = variant, StandID = as.numeric(StandID)) |>
@@ -695,6 +869,7 @@ server <- function(input, output, session) {
                          type = "error", duration = 10)
       })
     } else {
+      # No ecoregions selected — clear AOI state
       state$freq_table <- NULL
       state$aoi_stands <- NULL
       state$variant    <- NULL
@@ -702,6 +877,7 @@ server <- function(input, output, session) {
     }
   })
 
+  # Text below the map showing selected ecoregion names + stand count
   output$selected_regions_text <- renderUI({
     regs <- state$selected_regions
     if (length(regs) == 0) {
@@ -713,12 +889,14 @@ server <- function(input, output, session) {
         if (!is.null(state$aoi_stands)) {
           div(class = "status-ok",
               paste0(format(state$aoi_stands, big.mark = ","),
-                     " stands — variant: ", state$variant))
+                     " stands \u2014 variant: ", state$variant))
         }
       )
     }
   })
-  
+
+  # ── File upload handler ───────────────────────────────────────────────
+  # Calls get_tm_ids() from functions.R to process uploaded .gpkg/.tif.
   observeEvent(input$aoi_file, {
     req(input$aoi_file)
     tryCatch({
@@ -738,23 +916,28 @@ server <- function(input, output, session) {
                        type = "error", duration = 10)
     })
   })
-  
+
+  # Success message after file upload
   output$aoi_file_status <- renderUI({
     if (!is.null(state$aoi_stands) && identical(state$aoi_method, "file")) {
       div(class = "status-ok",
-          "✓ File loaded — ", tags$strong(state$aoi_stands), " stands matched")
+          "\u2713 File loaded \u2014 ", tags$strong(state$aoi_stands), " stands matched")
     }
   })
-  
-  # ── Review summary ────────────────────────────────────────────────────────
+
+
+  # =========================================================================
+  # Screen 3 server logic: Review
+  # =========================================================================
+
+  # Filtered stand count — applies forest type and structure class filters
+  # to freq_table. Used by the review summary table and low-stand warning.
   filtered_stand_count <- reactive({
     ft <- state$freq_table
     if (is.null(ft)) return(0L)
-    # Apply forest type filter if any selected (trim to match)
     if (length(input$ft_filter) > 0 && "Forest_Type" %in% names(ft)) {
       ft <- ft |> dplyr::filter(trimws(Forest_Type) %in% input$ft_filter)
     }
-    # Apply structure class filter if any selected (trim to match)
     if (length(input$sc_filter) > 0 && "Structure_Class_Description" %in% names(ft)) {
       ft <- ft |> dplyr::filter(trimws(Structure_Class_Description) %in% input$sc_filter)
     }
@@ -771,7 +954,7 @@ server <- function(input, output, session) {
                "Structure class filter", "Matching stands (after filters)"),
       Value = c(
         aoi_desc,
-        state$variant %||% "—",
+        state$variant %||% "\u2014",
         if (length(input$ft_filter) > 0) paste(input$ft_filter, collapse = ", ") else "All",
         if (length(input$sc_filter) > 0) paste(input$sc_filter, collapse = ", ") else "All",
         format(filtered_stand_count(), big.mark = ",")
@@ -783,12 +966,15 @@ server <- function(input, output, session) {
     n <- filtered_stand_count()
     if (n > 0 && n < 50) {
       div(style = "color:#7a2020;font-weight:500;margin:12px 0;",
-          paste0("⚠ Only ", n, " stands match your filters. ",
+          paste0("\u26a0 Only ", n, " stands match your filters. ",
                  "Results may not be statistically robust. Consider broadening filters."))
     }
   })
-  
-  # ── Weights preview ───────────────────────────────────────────────────────
+
+
+  # =========================================================================
+  # Screen 7 server logic: Weights preview (DT table, shown below real UI)
+  # =========================================================================
   output$weights_preview <- DT::renderDataTable({
     picks <- selected_ecs()
     if (length(picks) == 0) return(data.frame(Message = "No ECs selected"))
@@ -797,8 +983,15 @@ server <- function(input, output, session) {
       mutate(Importance = 3, Effect = "Positive") |>
       select(EC = label, Category = subcategory, Unit = unit, Importance, Effect)
   }, options = list(dom = 't', pageLength = 50), rownames = FALSE)
-  
-  # ── RF output plots (plotly, exclude rel.time == 0) ──────────────────────
+
+
+  # =========================================================================
+  # Screen 8 server logic: RF plots, tables, downloads
+  # =========================================================================
+
+  # ── Plot data reactive ─────────────────────────────────────────────────
+  # Filters rf_results to rel.time >= 0 (no pre-fire years) and rounds values.
+  # Both the bar plot and time series read from this.
   rf_plot_data <- reactive({
     res <- state$rf_results
     if (is.null(res)) return(NULL)
@@ -812,6 +1005,7 @@ server <- function(input, output, session) {
     )
   })
 
+  # Year dropdown for the bar plot (excludes year 0, shows only post-fire years)
   output$rf_year_selector <- renderUI({
     d <- rf_plot_data()
     if (is.null(d)) return(NULL)
@@ -821,6 +1015,7 @@ server <- function(input, output, session) {
                 selected = times[1], width = "150px")
   })
 
+  # ── Bar plot (plotly): combined weighted RF at one time step ───────────
   output$rf_bar_plot <- plotly::renderPlotly({
     d <- rf_plot_data()
     if (is.null(d)) return(plotly::plotly_empty())
@@ -834,23 +1029,25 @@ server <- function(input, output, session) {
                     type = "bar", marker = list(color = ~bar_color),
                     hovertemplate = "%{x}: %{y}<extra></extra>") |>
       plotly::layout(
-        title = paste0("Combined weighted RF — year ", yr),
+        title = paste0("Combined weighted RF \u2014 year ", yr),
         xaxis = list(title = "", categoryorder = "trace"),
         yaxis = list(title = "Weighted effect on HVRA", zeroline = TRUE),
         plot_bgcolor = "#ffffff", paper_bgcolor = "#ffffff"
       )
   })
 
+  # ── Time series plot (plotly): all treatments over time ───────────────
+  # FIC1-6 are colored light red → dark red. Treatment MgmtIDs (when added
+  # in a future sprint) will use greens/browns/blues — never red.
   output$rf_ts_plot <- plotly::renderPlotly({
     d <- rf_plot_data()
     if (is.null(d)) return(plotly::plotly_empty())
     comb <- d$combined |> dplyr::arrange(MgmtID, rel.time)
     mgmts <- unique(comb$MgmtID)
 
-    # FIC colors: light red → dark red
+    # Build color map: FIC = red gradient, treatments = non-red palette
     fic_ids <- grep("^FIC", mgmts, value = TRUE) |> sort()
     fic_reds <- colorRampPalette(c("#ffb3b3", "#8b0000"))(max(length(fic_ids), 1))
-    # Treatment colors: non-red palette
     trt_ids <- setdiff(mgmts, fic_ids)
     trt_cols <- c("#1e3a28", "#2d6a4f", "#8b4513", "#4a6fa5", "#6b4c9a", "#2a7f62")
     mgmt_colors <- setNames(
@@ -879,6 +1076,8 @@ server <- function(input, output, session) {
     )
   })
 
+  # ── Full results table ─────────────────────────────────────────────────
+  # Wide format: rows = MgmtID x rel.time, columns = per-EC RF + Combined.
   output$rf_preview_table <- DT::renderDataTable({
     res <- state$rf_results
     if (is.null(res)) return(data.frame(Message = "No RF results yet"))
@@ -896,7 +1095,8 @@ server <- function(input, output, session) {
       ) |>
       dplyr::arrange(MgmtID, rel.time)
   }, options = list(dom = 'frtip', pageLength = 200, scrollX = TRUE), rownames = FALSE)
-  
+
+  # ── EC config table (download screen) ──────────────────────────────────
   output$ec_config_table <- DT::renderDataTable({
     picks <- selected_ecs()
     if (length(picks) == 0) return(data.frame(Message = "No ECs selected"))
@@ -908,26 +1108,34 @@ server <- function(input, output, session) {
         Importance = as.integer(wts[[column]] %||% 3L),
         Effect     = fxs[[column]] %||% "Positive",
         Range      = if (!is.null(rngs[[column]]) && !all(is.na(rngs[[column]])))
-                       paste(rngs[[column]], collapse = " – ") else "—"
+                       paste(rngs[[column]], collapse = " \u2013 ") else "\u2014"
       ) |>
       dplyr::ungroup() |>
       select(EC = label, Category = subcategory, Importance, Effect, Range)
   }, options = list(dom = 't', pageLength = 50), rownames = FALSE)
-  
+
+  # ── Fact sheet preview ─────────────────────────────────────────────────
   output$factsheet_preview <- renderUI({
     nm <- input$hvra_name %||% "Unnamed HVRA"
     HTML(paste0(
       "<h3>", nm, "</h3>",
       "<p><strong>Ecoregion:</strong> ",
-      if (length(state$selected_regions) > 0) paste(state$selected_regions, collapse = ", ") else "—",
+      if (length(state$selected_regions) > 0) paste(state$selected_regions, collapse = ", ") else "\u2014",
       "</p>",
-      "<p><strong>Description:</strong> ", input$desc %||% "—", "</p>",
-      "<p><strong>Assumptions:</strong> ", input$assumptions %||% "—", "</p>",
-      "<p><strong>References:</strong> ", input$refs %||% "—", "</p>"
+      "<p><strong>Description:</strong> ", input$desc %||% "\u2014", "</p>",
+      "<p><strong>Assumptions:</strong> ", input$assumptions %||% "\u2014", "</p>",
+      "<p><strong>References:</strong> ", input$refs %||% "\u2014", "</p>"
     ))
   })
-  
-  # ── Download handlers ──────────────────────────────────────────────────
+
+
+  # =========================================================================
+  # Download handlers
+  # =========================================================================
+  # Each build_*() helper assembles a data frame or string; the downloadHandler
+  # writes it to the temp file Shiny provides.
+
+  # RF outputs CSV: per-EC median RF + combined score, wide format
   build_rf_csv <- function() {
     res <- state$rf_results
     if (is.null(res)) return(data.frame(Message = "No results"))
@@ -938,6 +1146,7 @@ server <- function(input, output, session) {
     )
   }
 
+  # EC config CSV: one row per selected EC with user's weight/effect/range settings
   build_ec_csv <- function() {
     picks <- isolate(selected_ecs())
     if (length(picks) == 0) return(data.frame())
@@ -955,6 +1164,7 @@ server <- function(input, output, session) {
     )
   }
 
+  # Fact sheet markdown: HVRA metadata + EC table
   build_factsheet <- function() {
     nm   <- input$hvra_name %||% "Unnamed HVRA"
     sci  <- input$hvra_sci %||% ""
