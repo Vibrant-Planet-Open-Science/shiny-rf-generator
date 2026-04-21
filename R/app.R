@@ -43,18 +43,20 @@ mock_ecoregions <- data.frame(
   lng     = c(-106.5, -121.5, -123.0, -119.5, -118.5, -111.0)
 )
 
-mock_forest_types      <- c("Douglas-fir","Ponderosa pine","Lodgepole pine",
-                            "Whitebark pine","Mixed conifer","Aspen")
-mock_structure_classes <- c(
-  "Bare ground",
-  "Stand initiation",
-  "Stem exclusion — open canopy",
-  "Stem exclusion — closed canopy",
-  "Understory reinitiation",
-  "Young forest multistory",
-  "Old forest multistory",
-  "Old forest single story"
-)
+# Load real filter lookups from S3 (small file, ~3KB)
+all_vars_codes <- aws.s3::s3readRDS(bucket = S3_BUCKET, object = S3_ALL_VARS)
+
+forest_types <- all_vars_codes |>
+  dplyr::filter(variable == "ForTyp") |>
+  dplyr::mutate(readable_values = trimws(readable_values)) |>
+  dplyr::arrange(readable_values) |>
+  dplyr::pull(readable_values)
+
+structure_classes <- all_vars_codes |>
+  dplyr::filter(variable == "Structure_Class") |>
+  dplyr::arrange(value) |>
+  dplyr::pull(readable_values) |>
+  trimws()
 mock_species           <- c("Pinus ponderosa (PP)","Pseudotsuga menziesii (DF)",
                             "Pinus albicaulis (WB)","Populus tremuloides (AS)")
 
@@ -256,11 +258,11 @@ server <- function(input, output, session) {
         fluidRow(
           column(6,
                  div(class = "section-label", "Forest type"),
-                 checkboxGroupInput("ft_filter", NULL, choices = mock_forest_types)
+                 checkboxGroupInput("ft_filter", NULL, choices = forest_types)
           ),
           column(6,
                  div(class = "section-label", "Structure class"),
-                 checkboxGroupInput("sc_filter", NULL, choices = mock_structure_classes)
+                 checkboxGroupInput("sc_filter", NULL, choices = structure_classes)
           )
         ),
         div(class = "navbar",
