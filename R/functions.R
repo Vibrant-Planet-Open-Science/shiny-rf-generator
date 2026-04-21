@@ -36,7 +36,7 @@ get_tm_ids <- function(aoi_path, filetype, unique_ids){
   
   # Determine variant type based on overlap percentage
   variant_percent <- length(which(aoi_counties$GEOID %in% ca_counties$GEOID)) / length(aoi_counties$GEOID)
-  variant <- ifelse(variant_percent >= 0.5, "CA", "CO")
+  variant <- ifelse(variant_percent >= 0.5, "CA", "CR")
   
   
   # Fetch TM IDs from the S3 bucket

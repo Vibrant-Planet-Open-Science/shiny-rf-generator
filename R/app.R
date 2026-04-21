@@ -163,7 +163,8 @@ server <- function(input, output, session) {
     selected_ecs     = character(),
     ec_weights       = list(),
     ec_effects       = list(),
-    species_list     = NULL
+    species_list     = NULL,
+    filtered_data    = NULL
   )
   
   # Reactive that only depends on the specific ecgrp_* checkbox inputs,
@@ -182,6 +183,27 @@ server <- function(input, output, session) {
   
   observeEvent(input$btn_next, {
     s <- state$screen
+
+    # Load filtered StandLevel data when leaving review screen
+    if (s == "review" && is.null(state$filtered_data)) {
+      req(state$variant, state$freq_table)
+      tryCatch({
+        withProgress(message = "Loading stand data (this may take a minute)...", {
+          stand_raw <- load_stand_data(state$variant)
+          # Apply filter selections to freq_table
+          ft <- state$freq_table
+          if (length(input$ft_filter) > 0 && "Forest_Type" %in% names(ft))
+            ft <- ft |> dplyr::filter(trimws(Forest_Type) %in% input$ft_filter)
+          if (length(input$sc_filter) > 0 && "Structure_Class_Description" %in% names(ft))
+            ft <- ft |> dplyr::filter(trimws(Structure_Class_Description) %in% input$sc_filter)
+          state$filtered_data <- get_filtered_stand_data(stand_raw, ft)
+        })
+      }, error = function(e) {
+        showNotification(paste("Failed to load stand data:", e$message),
+                         type = "error", duration = 10)
+      })
+    }
+
     if (s == "rftype" && isTRUE(state$rf_type == "stand")) { nav_to("ecs"); return() }
 
     # Load species list when entering species screen (first time only)
@@ -223,6 +245,7 @@ server <- function(input, output, session) {
     state$rf_type          <- NULL
     state$selected_species <- character()
     state$species_list     <- NULL
+    state$filtered_data    <- NULL
     state$selected_ecs     <- character()
     state$ec_weights       <- list()
     state$ec_effects       <- list()
@@ -277,6 +300,19 @@ server <- function(input, output, session) {
   }
   
   render_filters <- function() {
+    ft <- isolate(state$freq_table)
+    if (!is.null(ft) && "Forest_Type" %in% names(ft)) {
+      ft_choices <- sort(unique(trimws(ft$Forest_Type)))
+      ft_choices <- ft_choices[!is.na(ft_choices) & nzchar(ft_choices)]
+    } else {
+      ft_choices <- forest_types
+    }
+    if (!is.null(ft) && "Structure_Class_Description" %in% names(ft)) {
+      sc_choices <- sort(unique(trimws(ft$Structure_Class_Description)))
+      sc_choices <- sc_choices[!is.na(sc_choices) & nzchar(sc_choices)]
+    } else {
+      sc_choices <- structure_classes
+    }
     div(class = "card",
         h2("Filter stands"),
         p("Narrow to relevant forest types and structure classes. Leave blank to include all.",
@@ -284,11 +320,11 @@ server <- function(input, output, session) {
         fluidRow(
           column(6,
                  div(class = "section-label", "Forest type"),
-                 checkboxGroupInput("ft_filter", NULL, choices = forest_types)
+                 checkboxGroupInput("ft_filter", NULL, choices = ft_choices)
           ),
           column(6,
                  div(class = "section-label", "Structure class"),
-                 checkboxGroupInput("sc_filter", NULL, choices = structure_classes)
+                 checkboxGroupInput("sc_filter", NULL, choices = sc_choices)
           )
         ),
         div(class = "navbar",
@@ -524,7 +560,7 @@ server <- function(input, output, session) {
           geoids <- unique(aoi_counties$GEOID)
 
           variant_pct <- sum(geoids %in% ca_county_geoids) / length(geoids)
-          variant <- ifelse(variant_pct >= 0.5, "CA", "CO")
+          variant <- ifelse(variant_pct >= 0.5, "CA", "CR")
 
           bucket_contents <- aws.s3::get_bucket(bucket = S3_BUCKET, prefix = S3_TMIDS_PREFIX)
           files <- sapply(bucket_contents, function(x) x$Key)
@@ -625,6 +661,20 @@ server <- function(input, output, session) {
   })
   
   # ── Review summary ────────────────────────────────────────────────────────
+  filtered_stand_count <- reactive({
+    ft <- state$freq_table
+    if (is.null(ft)) return(0L)
+    # Apply forest type filter if any selected (trim to match)
+    if (length(input$ft_filter) > 0 && "Forest_Type" %in% names(ft)) {
+      ft <- ft |> dplyr::filter(trimws(Forest_Type) %in% input$ft_filter)
+    }
+    # Apply structure class filter if any selected (trim to match)
+    if (length(input$sc_filter) > 0 && "Structure_Class_Description" %in% names(ft)) {
+      ft <- ft |> dplyr::filter(trimws(Structure_Class_Description) %in% input$sc_filter)
+    }
+    nrow(ft)
+  })
+
   output$review_summary <- renderTable({
     aoi_desc <- if (length(state$selected_regions) > 0)
       paste(state$selected_regions, collapse = ", ")
@@ -632,16 +682,25 @@ server <- function(input, output, session) {
     else "Not set"
     data.frame(
       Item = c("AOI", "FVS variant", "Forest type filter",
-               "Structure class filter", "Matching stands"),
+               "Structure class filter", "Matching stands (after filters)"),
       Value = c(
         aoi_desc,
         state$variant %||% "—",
         if (length(input$ft_filter) > 0) paste(input$ft_filter, collapse = ", ") else "All",
         if (length(input$sc_filter) > 0) paste(input$sc_filter, collapse = ", ") else "All",
-        as.character(state$aoi_stands %||% "—")
+        format(filtered_stand_count(), big.mark = ",")
       )
     )
   }, striped = TRUE, width = "100%")
+
+  output$low_stand_warning <- renderUI({
+    n <- filtered_stand_count()
+    if (n > 0 && n < 50) {
+      div(style = "color:#7a2020;font-weight:500;margin:12px 0;",
+          paste0("⚠ Only ", n, " stands match your filters. ",
+                 "Results may not be statistically robust. Consider broadening filters."))
+    }
+  })
   
   # ── Weights preview ───────────────────────────────────────────────────────
   output$weights_preview <- DT::renderDataTable({
