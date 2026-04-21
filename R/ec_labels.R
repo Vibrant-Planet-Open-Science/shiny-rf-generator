@@ -63,7 +63,7 @@ mgmt_labels <- tibble::tribble(
   "FIC4",     "Wildfire — FIC 4 (6–8 ft flame length)", "fire",      NA,
   "FIC5",     "Wildfire — FIC 5 (8–12 ft flame length)","fire",      NA,
   "FIC6",     "Wildfire — FIC 6 (>12 ft flame length)", "fire",      NA,
-  "MRCC",     "Ground-based mechanical clearcut",        "treatment", "Mechanical removal",
+  "MRCT",     "Ground-based mechanical thin",             "treatment", "Mechanical removal",
   "MTTH",     "Manual thinning",                         "treatment", "Manual",
   "RMGP",     "Grapple pile burn",                       "treatment", "Mechanical rearrangement",
 )
