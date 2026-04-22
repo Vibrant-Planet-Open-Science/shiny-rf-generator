@@ -29,14 +29,12 @@ Wildlife biologists, fire ecologists, HVRA workshop participants, and analysts w
 - Stand-level and species-specific RFs
 
 **Not yet wired (in progress):**
-- Real S3 data loads (currently placeholder values in some screens)
-- Full weights UI (1–5 stepper + effect type pills + range inputs)
-- `response_spacer()` integration for real RF computation
-- Download handlers (RF outputs, EC config, fact sheet)
-- Treatments: MRCT (ground-based mechanical thinning), MTTH (manual thinning), RMGP (grapple pile burn)
+- Treatments: MRCT (ground-based mechanical thin), MTTH (manual thinning), RMGP (grapple pile burn) — needs `compute_te_rf()` with base year 2030
+- EC search box: text input exists on the EC picker screen but doesn't filter the list yet
+- Species-specific ECs: LiveTpa/LiveBA per species not yet added to the EC picker when the "Individual tree species" path is selected
 
 **Out of scope this release:**
-- Additional treatments (CMCC, CMUR, HCTA, HERB, MRCT, MTIR, MTUR, REVA, RMMA, RMTF, RXAI, RXGF)
+- Additional treatments (CMCC, CMUR, HCTA, HERB, MTIR, MTUR, REVA, RMMA, RMTF, RXAI, RXGF)
 - Modular `ui.R` / `server.R` / `global.R` restructure
 - Arrow/Parquet conversion of the large RDS files
 - Library submission flow
@@ -48,8 +46,8 @@ Wildlife biologists, fire ecologists, HVRA workshop participants, and analysts w
 
 ### Prerequisites
 - R ≥ 4.3
-- AWS credentials with read access to the `vp-open-science` bucket (set in `~/.aws/credentials` or via environment variables)
-- Required R packages: `shiny`, `leaflet`, `sf`, `dplyr`, `tibble`, `DT`, `aws.s3`
+- No AWS credentials needed — the `vp-open-science` bucket is public and the app uses anonymous S3 access
+- Required R packages: `shiny`, `bslib`, `sf`, `leaflet`, `dplyr`, `tibble`, `tidyr`, `plotly`, `DT`, `aws.s3`, `purrr`
 
 ### Run
 ```r
@@ -64,12 +62,12 @@ The app opens in your default browser at `http://127.0.0.1:NNNN`.
 | Path | Purpose |
 |---|---|
 | `R/app.R` | Main Shiny app — 8-screen wizard |
-| `R/ec_labels.R` | EC crosswalk, MgmtID labels, S3 path constants |
-| `R/functions.R` | Data pipeline helpers (`get_tm_ids`, `response_spacer`, `cleanDF`) |
+| `R/ec_labels.R` | EC crosswalk, MgmtID labels, S3 path constants, anonymous S3 helpers |
+| `R/functions.R` | Data pipeline helpers (`get_tm_ids`, `compute_de_rf`, `load_stand_data`) |
 | `R/check_timing_invariants.R` | Pre-disturbance timing sanity checks |
-| `app/rf-generator-v1/` | v1 app, kept for reference |
-| `data/` | Small local data files (county shapefiles, etc.) |
+| `data/` | Small local data files (county shapefiles, stand metadata lookup) |
 | `www/ecoregions_western.geojson` | RESOLVE 2017 ecoregion polygons for the map |
+| `scripts/prep_ecoregions.R` | One-time script to build ecoregions GeoJSON |
 | `docs/timing_assumptions.md` | Audit of t=0 conventions for fire vs treatment |
 | `README.md` | This file |
 
@@ -87,6 +85,18 @@ Primary files used:
 - `CA-FIC-StdStk_*.rds`, `CR-TRT-StdStk_*.rds` — species-level stock tables
 - `rshiny-spatial-data/` — county-level TreeMap ID lookups, western counties gpkg
 
+## RF computation
+
+Uses the "revised difference in proportion" formula from the data prep notebooks:
+
+```
+rf = (metric[t] / metric[t=0]) - (base[t] / base[t=0])
+```
+
+- Clipped to [-1, 1]
+- BASE joined to FIC scenarios on `(StandID, Year)` — calendar year alignment, not rel.time
+- Fire base year = 2035
+- See `docs/timing_assumptions.md` for full timing conventions
 
 ## Wizard flow
 
@@ -94,7 +104,7 @@ Primary files used:
 2. **Filters** — narrow stands by forest type and structural class (O'Hara 1996)
 3. **Review** — confirm AOI, variant, and matching stand count before loading
 4. **RF type** — pick stand-characteristics path or tree-species path
-5. **Species** *(species path only)* — select target tree species
+5. **Species** *(species path only)* — select target tree species (filtered to LiveTpa > 5 at fire year)
 6. **ECs** — pick ecosystem components grouped by subcategory (canopy, tree size, fuels, wildlife habitat, carbon, growth)
 7. **Weights** — set importance (1–5) and effect type (positive / negative / range) per EC
 8. **Download** — review RF outputs, EC config, and fact sheet; download as CSV + markdown bundle
