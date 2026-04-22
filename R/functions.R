@@ -40,10 +40,7 @@ get_tm_ids <- function(aoi_path, filetype, unique_ids){
   
   
   # Fetch TM IDs from the S3 bucket
-  county_tmids <- aws.s3::get_bucket(
-    bucket = S3_BUCKET,
-    prefix = S3_TMIDS_PREFIX
-  )
+  county_tmids <- s3_list_bucket(S3_TMIDS_PREFIX)
   
   # Parse file paths from the bucket
   files <- county_tmids %>%
@@ -66,10 +63,7 @@ get_tm_ids <- function(aoi_path, filetype, unique_ids){
   # Process each filtered filename
   tm_out <- NULL
   for (i in seq_along(counts)) {
-    tm_ids <- aws.s3::s3readRDS(
-      bucket = S3_BUCKET,
-      object = counts[i]
-    )
+    tm_ids <- s3_read_rds(counts[i])
     
     # Filter TM IDs within AOI bounds
     dims <- sf::st_bbox(aoi)
@@ -129,7 +123,7 @@ get_tm_ids <- function(aoi_path, filetype, unique_ids){
 #' @export
 load_stand_data <- function(variant) {
   s3_object <- if (variant == "CA") S3_CA_STANDLEVEL else S3_CR_STANDLEVEL
-  aws.s3::s3readRDS(bucket = S3_BUCKET, object = s3_object)
+  s3_read_rds(s3_object)
 }
 
 #' Load StdStk (Species) Data from S3
@@ -141,7 +135,7 @@ load_stand_data <- function(variant) {
 #' @export
 load_stdstk_data <- function(variant) {
   s3_object <- if (variant == "CA") S3_CA_STDSTK else S3_CR_STDSTK
-  aws.s3::s3readRDS(bucket = S3_BUCKET, object = s3_object)
+  s3_read_rds(s3_object)
 }
 
 
