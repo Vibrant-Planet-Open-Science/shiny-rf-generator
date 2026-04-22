@@ -91,7 +91,7 @@ ca_county_geoids <- readRDS(here::here("data", "ca_counties.rds"))$GEOID
 # Forest type and structure class lookup — loaded from S3 (~3KB).
 # Used as global fallback for filter checkboxes; the actual choices are
 # narrowed to AOI-specific values when freq_table is available.
-all_vars_codes <- aws.s3::s3readRDS(bucket = S3_BUCKET, object = S3_ALL_VARS)
+all_vars_codes <- s3_read_rds(S3_ALL_VARS)
 
 forest_types <- all_vars_codes |>
   dplyr::filter(variable == "ForTyp") |>
@@ -819,7 +819,7 @@ server <- function(input, output, session) {
           variant <- ifelse(variant_pct >= 0.5, "CA", "CR")
 
           # Fetch per-county TreeMap ID files from S3
-          bucket_contents <- aws.s3::get_bucket(bucket = S3_BUCKET, prefix = S3_TMIDS_PREFIX)
+          bucket_contents <- s3_list_bucket(S3_TMIDS_PREFIX)
           files <- sapply(bucket_contents, function(x) x$Key)
           # Extract GEOID from filenames (pattern: CountyName_GEOID_tmids_only.rds)
           file_geoids <- sapply(files, function(f) {
@@ -831,7 +831,7 @@ server <- function(input, output, session) {
           # Read and combine TreeMap IDs across all matched county files
           tm_out <- NULL
           for (f in matched_files) {
-            chunk <- aws.s3::s3readRDS(bucket = S3_BUCKET, object = f)
+            chunk <- s3_read_rds(f)
             colnames(chunk) <- c("lat", "lon", "tm_id")
             chunk <- chunk |>
               dplyr::filter(!is.na(tm_id)) |>

@@ -86,3 +86,28 @@ S3_ALL_VARS       <- s3_path("rshiny-spatial-data", "all_vars_codes.rds")
 S3_UNIQUE_STANDS  <- s3_path("rshiny-spatial-data", "unique_stands_western.rds")
 S3_COUNTIES_GPKG  <- s3_path("rshiny-spatial-data", "tl_2024_western_counties.gpkg")
 S3_TMIDS_PREFIX   <- s3_path("rshiny-spatial-data", "filtered_tmids_by_county")
+
+# ── Anonymous S3 readers ─────────────────────────────────────────────────
+# vp-open-science is a public bucket. Passing empty key/secret tells aws.s3
+# to skip request signing, so co-authors don't need AWS credentials.
+S3_REGION <- "us-west-2"
+
+s3_read_rds <- function(object) {
+  aws.s3::s3readRDS(
+    object = object,
+    bucket = S3_BUCKET,
+    region = S3_REGION,
+    key    = "",
+    secret = ""
+  )
+}
+
+s3_list_bucket <- function(prefix) {
+  aws.s3::get_bucket(
+    bucket = S3_BUCKET,
+    prefix = prefix,
+    region = S3_REGION,
+    key    = "",
+    secret = ""
+  )
+}
