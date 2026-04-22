@@ -306,13 +306,16 @@ server <- function(input, output, session) {
     # -- Entering species screen: load StdStk from S3 (first time only) -----
     if (s == "rftype" && isTRUE(state$rf_type == "species") && is.null(state$species_list)) {
       tryCatch({
-        withProgress(message = "Loading species data (this may take a minute)...", {
+        withProgress(message = "Loading species data (this may take a few moments)...", {
           stdstk <- load_stdstk_data(state$variant)
           aoi_stand_ids <- as.character(state$freq_table$StandID)
           stdstk_filtered <- stdstk |>
             dplyr::filter(as.character(StandID) %in% aoi_stand_ids)
-          species <- sort(unique(stdstk_filtered$Species))
-          species <- species[!species %in% c("All", "")]
+          # Only include species with LiveTpa > 5 at t=0 (year 2035, fire year)
+          # in at least one AOI stand. Matches WBP-DE-RF.Rmd convention.
+          qualifying <- stdstk_filtered |>
+            dplyr::filter(Year == 2035, LiveTpa > 5, !Species %in% c("All", ""))
+          species <- sort(unique(qualifying$Species))
           state$species_list <- species
         })
       }, error = function(e) {
