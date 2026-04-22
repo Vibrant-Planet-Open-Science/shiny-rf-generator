@@ -26,7 +26,6 @@ Wildlife biologists, fire ecologists, HVRA workshop participants, and analysts w
 **In scope (v2.0 initial release):**
 - Western US, California (CA) and Central Rockies (CR) FVS variants
 - Fire intensity classes FIC1–6
-- Treatments: MRCC (ground-based mechanical thinning), MTTH (manual thinning), RMGP (grapple pile burn)
 - Stand-level and species-specific RFs
 
 **Not yet wired (in progress):**
@@ -34,6 +33,7 @@ Wildlife biologists, fire ecologists, HVRA workshop participants, and analysts w
 - Full weights UI (1–5 stepper + effect type pills + range inputs)
 - `response_spacer()` integration for real RF computation
 - Download handlers (RF outputs, EC config, fact sheet)
+- Treatments: MRCT (ground-based mechanical thinning), MTTH (manual thinning), RMGP (grapple pile burn)
 
 **Out of scope this release:**
 - Additional treatments (CMCC, CMUR, HCTA, HERB, MRCT, MTIR, MTUR, REVA, RMMA, RMTF, RXAI, RXGF)
