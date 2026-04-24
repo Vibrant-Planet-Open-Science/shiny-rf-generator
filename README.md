@@ -45,9 +45,9 @@ Wildlife biologists, fire ecologists, HVRA workshop participants, and analysts w
 ## Quick start
 
 ### Prerequisites
-- R ≥ 4.3
+- R ≥ 4.3 (renv.lock currently pins R 4.5.3)
 - No AWS credentials needed — the `vp-open-science` bucket is public and the app uses anonymous S3 access
-- Required R packages: `shiny`, `bslib`, `sf`, `leaflet`, `dplyr`, `tibble`, `tidyr`, `plotly`, `DT`, `aws.s3`, `purrr`
+- R package dependencies: pinned in `renv.lock`. After cloning, run `renv::restore()` to install — see [Reproducible environment](#reproducible-environment-renv) below.
 
 ### Run
 ```r
@@ -56,6 +56,31 @@ shiny::runApp("R")
 ```
 
 The app opens in your default browser at `http://127.0.0.1:NNNN`.
+
+
+## Reproducible environment (renv)
+
+This project uses [`renv`](https://rstudio.github.io/renv/) to pin R package versions for reproducibility. Exact versions used by the app are recorded in `renv.lock`.
+
+**First time pulling this branch or cloning the repo:**
+
+```r
+renv::restore()
+```
+
+This installs the pinned packages into a project-local library (`renv/library/`). Expect 5–10 minutes on first run — `sf` and `terra` are slowest because of their geospatial system library dependencies. Subsequent R sessions in the project auto-activate `renv`.
+
+**Adding a new package:**
+
+```r
+renv::install("pkgname")   # install into project library
+renv::snapshot()            # record the new version in renv.lock
+```
+
+Then commit the updated `renv.lock` with your change.
+
+**Troubleshooting:** If `renv::restore()` fails on `sf`, `terra`, or another spatial package, confirm you have Rtools installed (Windows) or GDAL/PROJ/GEOS system libraries (macOS/Linux).
+
 
 ## Repository layout
 
@@ -70,6 +95,7 @@ The app opens in your default browser at `http://127.0.0.1:NNNN`.
 | `scripts/prep_ecoregions.R` | One-time script to build ecoregions GeoJSON |
 | `docs/timing_assumptions.md` | Audit of t=0 conventions for fire vs treatment |
 | `README.md` | This file |
+
 
 ## Data
 
@@ -113,8 +139,7 @@ rf = (metric[t] / metric[t=0]) - (base[t] / base[t=0])
 
 ### Branching
 - `main` — most recent working state
-- `v2-wiring` — active development branch for v2.0
-- Feature branches off `v2-wiring` for larger changes
+- Collaborator feature branches: branch from `main`, open PR back to `main`
 
 
 ### Related documentation
