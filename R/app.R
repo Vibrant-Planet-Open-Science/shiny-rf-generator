@@ -45,6 +45,12 @@ library(plotly)
 library(DT)
 
 
+# Register the project-root www/ folder as a Shiny static-asset path.
+# This lets the browser fetch www/style.css, www/<image>, etc. — without
+# moving www/ to live inside R/. here::here() anchors to the project root.
+shiny::addResourcePath("www", here::here("www"))
+
+
 # =============================================================================
 # Constants & helpers
 # =============================================================================
@@ -178,6 +184,23 @@ app_css <- "
 
 ui <- fluidPage(
   tags$head(
+    # Google Fonts: Poppins (display + body) + JetBrains Mono (structural)
+    # preconnect hints let the browser open the TLS connection in parallel with
+    # parsing the rest of <head>, shaving ~100ms off first paint.
+    tags$link(rel = "preconnect", href = "https://fonts.googleapis.com"),
+    tags$link(rel = "preconnect", href = "https://fonts.gstatic.com", crossorigin = NA),
+    tags$link(
+      rel = "stylesheet",
+      href = paste0(
+        "https://fonts.googleapis.com/css2?",
+        "family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400&",
+        "family=JetBrains+Mono:wght@400;500;600&display=swap"
+      )
+    ),
+    # New design system tokens. Loaded BEFORE the legacy app_css so the inline
+    # string still wins on selectors that overlap (body, .card, etc.) for now —
+    # we'll migrate screens off app_css one phase at a time.
+    tags$link(rel = "stylesheet", href = "www/style.css"),
     tags$style(HTML(app_css)),
     # Custom JS handler: scrolls to top when navigating between screens
     tags$script(HTML("
