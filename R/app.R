@@ -59,6 +59,10 @@ STEP_LABELS <- c(aoi="AOI", filters="Filters", review="Review", rftype="RF Type"
                  ecs="ECs", weights="Weights", download="Download")
 BREADCRUMB_ORDER <- c("aoi", "filters", "review", "rftype", "ecs", "weights", "download")
 
+# Maximum relative year shown in plots and the on-screen table.
+# Downloads still include the full simulation horizon.
+MAX_DISPLAY_YEAR <- 20
+
 # Null-coalescing operator: returns `b` if `a` is NULL, empty, or ""
 `%||%` <- function(a, b) if (is.null(a) || length(a) == 0 || identical(a, "")) b else a
 
@@ -1049,17 +1053,18 @@ server <- function(input, output, session) {
   # =========================================================================
 
   # ── Plot data reactive ─────────────────────────────────────────────────
-  # Filters rf_results to rel.time >= 0 (no pre-fire years) and rounds values.
-  # Both the bar plot and time series read from this.
+  # Filters rf_results to 0 <= rel.time <= MAX_DISPLAY_YEAR and rounds values.
+  # Both the bar plot, time series, and on-screen table read from this.
+  # Download handlers use state$rf_results directly (full horizon).
   rf_plot_data <- reactive({
     res <- state$rf_results
     if (is.null(res)) return(NULL)
     list(
       combined = res$combined |>
-        dplyr::filter(rel.time >= 0) |>
+        dplyr::filter(rel.time >= 0, rel.time <= MAX_DISPLAY_YEAR) |>
         dplyr::mutate(median_combined_rf = round(median_combined_rf, 2)),
       per_ec = res$per_ec |>
-        dplyr::filter(rel.time >= 0) |>
+        dplyr::filter(rel.time >= 0, rel.time <= MAX_DISPLAY_YEAR) |>
         dplyr::mutate(median_rf = round(median_rf, 2))
     )
   })
@@ -1137,18 +1142,16 @@ server <- function(input, output, session) {
 
   # ── Full results table ─────────────────────────────────────────────────
   # Wide format: rows = MgmtID x rel.time, columns = per-EC RF + Combined.
+  # Capped at MAX_DISPLAY_YEAR via rf_plot_data(); downloads keep all years.
   output$rf_preview_table <- DT::renderDataTable({
-    res <- state$rf_results
-    if (is.null(res)) return(data.frame(Message = "No RF results yet"))
-    wide <- res$per_ec |>
-      dplyr::filter(rel.time >= 0) |>
-      dplyr::mutate(median_rf = round(median_rf, 2)) |>
+    d <- rf_plot_data()
+    if (is.null(d)) return(data.frame(Message = "No RF results yet"))
+    wide <- d$per_ec |>
       tidyr::pivot_wider(names_from = EC, values_from = median_rf)
     wide |>
       dplyr::left_join(
-        res$combined |>
-          dplyr::filter(rel.time >= 0) |>
-          dplyr::mutate(Combined = round(median_combined_rf, 2)) |>
+        d$combined |>
+          dplyr::mutate(Combined = median_combined_rf) |>
           dplyr::select(MgmtID, rel.time, Combined),
         by = c("MgmtID", "rel.time")
       ) |>
