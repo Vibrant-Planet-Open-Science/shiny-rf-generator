@@ -219,10 +219,7 @@ ui <- fluidPage(
       // Scroll to top when navigating between screens.
       Shiny.addCustomMessageHandler('scroll_top', function(m) { window.scrollTo(0, 0); });
 
-      // Sidebar collapse toggle — pure client-side. Uses event delegation
-      // on document so re-renders don't break the binding. Toggles
-      // .is-collapsed on the parent .sidebar; CSS hides everything except
-      // the header. Button text flips between 'collapse \u2212' and 'expand +'.
+      // Sidebar collapse toggle.
       document.addEventListener('click', function(e) {
         if (e.target.matches('.sidebar-toggle')) {
           var s = e.target.closest('.sidebar');
@@ -230,7 +227,20 @@ ui <- fluidPage(
           e.target.textContent = collapsed ? 'expand +' : 'collapse \u2212';
         }
       });
+
+      // Chip toggle — pushes {group, value} to a single shared Shiny input.
+      // priority:'event' ensures consecutive clicks on the same chip both fire
+      // (Shiny otherwise dedupes identical values).
+      document.addEventListener('click', function(e) {
+        if (e.target.matches('.chip-toggle')) {
+          Shiny.setInputValue('toggle_chip', {
+            group: e.target.dataset.chipGroup,
+            value: e.target.dataset.chipValue
+          }, {priority: 'event'});
+        }
+      });
     "))
+
 
   ),
   div(class = "app-container",
@@ -400,12 +410,11 @@ server <- function(input, output, session) {
       tryCatch({
         withProgress(message = "Loading stand data (this may take a minute)...", {
           stand_raw <- load_stand_data(state$variant)
-          # Apply user's forest type / structure class filters to freq_table
-          ft <- state$freq_table
-          if (length(input$ft_filter) > 0 && "Forest_Type" %in% names(ft))
-            ft <- ft |> dplyr::filter(trimws(Forest_Type) %in% input$ft_filter)
-          if (length(input$sc_filter) > 0 && "Structure_Class_Description" %in% names(ft))
-            ft <- ft |> dplyr::filter(trimws(Structure_Class_Description) %in% input$sc_filter)
+          # Apply chip-driven filters via the filtered_stands() reactive.
+          # No more input$ft_filter / input$sc_filter — page 02 writes to
+          # state$selected_forest_types / state$selected_structure_classes
+          # which filtered_stands() reads from.
+          ft <- filtered_stands() %||% state$freq_table
           state$filtered_data <- get_filtered_stand_data(stand_raw, ft)
         })
       }, error = function(e) {
@@ -413,6 +422,7 @@ server <- function(input, output, session) {
                          type = "error", duration = 10)
       })
     }
+
 
     # -- Skip species screen if user chose "stand" RF type -------------------
     if (s == "rftype" && isTRUE(state$rf_type == "stand")) { nav_to("ecs"); return() }
@@ -661,8 +671,8 @@ server <- function(input, output, session) {
       # step counter, orange under-rule (via ::after pseudo-element in CSS).
       div(class = "page-header",
         div(class = "page-header-numeral", "01"),
-        div(class = "page-header-overline",
-          tags$span(class = "page-header-step", "Step 01 of 07"),
+               div(class = "page-header-overline",
+          tags$span(class = "page-header-step", "Define"),
           tags$span("\u00b7 Area of Interest")
         ),
         h1(tags$strong("Define"), " ", tags$em("where this RF applies.")),
@@ -745,8 +755,8 @@ server <- function(input, output, session) {
 
       # ── Page footer ──────────────────────────────────────────────────────
       # Status text + Continue button rendered server-side so they react
-      # to HVRA name + AOI state. See output$page_footer.
-      uiOutput("page_footer")
+      # to HVRA name + AOI state. See output$aoi_page_footer.
+      uiOutput("aoi_page_footer")
 
     )
   }   
@@ -758,40 +768,62 @@ server <- function(input, output, session) {
   # from the AOI's freq_table (only types/classes present in the user's stands).
   # Leaving checkboxes blank means "include all".
   render_filters <- function() {
-    ft <- isolate(state$freq_table)
-    # Build AOI-specific choices (fall back to global list if no freq_table)
-    if (!is.null(ft) && "Forest_Type" %in% names(ft)) {
-      ft_choices <- sort(unique(trimws(ft$Forest_Type)))
-      ft_choices <- ft_choices[!is.na(ft_choices) & nzchar(ft_choices)]
-    } else {
-      ft_choices <- forest_types
-    }
-    if (!is.null(ft) && "Structure_Class_Description" %in% names(ft)) {
-      sc_choices <- sort(unique(trimws(ft$Structure_Class_Description)))
-      sc_choices <- sc_choices[!is.na(sc_choices) & nzchar(sc_choices)]
-    } else {
-      sc_choices <- structure_classes
-    }
-    div(class = "card",
-        h2("Filter stands"),
-        p("Narrow to relevant forest types and structure classes. Leave blank to include all.",
-          class = "subtitle"),
-        fluidRow(
-          column(6,
-                 div(class = "section-label", "Forest type"),
-                 checkboxGroupInput("ft_filter", NULL, choices = ft_choices)
-          ),
-          column(6,
-                 div(class = "section-label", "Structure class"),
-                 checkboxGroupInput("sc_filter", NULL, choices = sc_choices)
-          )
+    div(class = "main-col",
+
+      # ── Page header ──────────────────────────────────────────────────────
+      div(class = "page-header",
+        div(class = "page-header-numeral", "02"),
+        div(class = "page-header-overline",
+          tags$span(class = "page-header-step", "Define"),
+          tags$span("\u00b7 Filters")
         ),
-        div(class = "navbar",
-            actionButton("btn_back", "\u2190 Back",  class = "btn btn-outline-secondary btn-lg"),
-            actionButton("btn_next", "Next \u2192",  class = "btn btn-primary btn-lg")
+        h1(tags$strong("Narrow"), " ", tags$em("to where this RF applies.")),
+        uiOutput("filters_intro_copy")  # reactive — reads HVRA name + AOI count
+      ),
+
+      # ── Teaching block (default closed on this page) ─────────────────────
+      tags$details(class = "teaching-block",
+        tags$summary(class = "teaching-summary",
+          tags$span(class = "teaching-eyebrow", "Why filter?"),
+          tags$span(class = "teaching-headline",
+            "Pre-filtering improves RF specificity by removing stands where the species wouldn't occur regardless of fire effects."
+          ),
+          tags$span(class = "teaching-chevron")
+        ),
+        div(class = "teaching-content",
+          div(class = "teaching-body",
+            "Forest type and structure class are coarse but powerful filters. ",
+            "If your HVRA depends on dense ", tags$em("mixed-conifer"),
+            " stands and there are ", tags$em("non-forest"),
+            " or ", tags$em("woodland"),
+            " stands in your AOI, including them would dilute the response signal across irrelevant terrain."
+          ),
+          div(class = "teaching-body",
+            "Structure classes use the O'Hara 1996 typology: ",
+            tags$em("seedling/sapling"), ", ", tags$em("pole"), ", ",
+            tags$em("medium"), ", ", tags$em("large"), ", ",
+            tags$em("multi-storied"), ". Pick the classes where your HVRA actually lives."
+          ),
+          div(class = "teaching-footer",
+            tags$a(class = "teaching-deepen", href = "#", "See O'Hara's typology")
+          )
         )
+      ),
+
+      # ── Forest type section ──────────────────────────────────────────────
+      div(uiOutput("filters_ft_section")),
+
+      # ── Structure class section ──────────────────────────────────────────
+      div(uiOutput("filters_sc_section")),
+
+      # ── Live count readout (or empty-state recovery) ─────────────────────
+      uiOutput("filters_count_readout"),
+
+      # ── Page footer ──────────────────────────────────────────────────────
+      uiOutput("filters_page_footer")
     )
   }
+
 
   # ── Screen 3: Review ───────────────────────────────────────────────────
   # Summary table showing AOI, variant, filters, and matching stand count.
@@ -1249,7 +1281,7 @@ server <- function(input, output, session) {
   # ecoregion click handler and the file upload handler when an AOI
   # successfully resolves to stands). Status copy specifies exactly
   # what's blocking so the user knows what to do next.
-  output$page_footer <- renderUI({
+  output$aoi_page_footer <- renderUI({
     has_name <- nzchar(trimws(input$hvra_name %||% ""))
     has_aoi  <- !is.null(state$variant)
 
@@ -1319,37 +1351,271 @@ server <- function(input, output, session) {
   # Screen 3 server logic: Review
   # =========================================================================
 
-  # Filtered stand count — applies forest type and structure class filters
-  # to freq_table. Used by the review summary table and low-stand warning.
+  # Count of stands after page-02 chip filters. Just nrow of filtered_stands().
+  # Kept as a separate reactive because the review screen summary table reads it.
   filtered_stand_count <- reactive({
-    ft <- state$freq_table
-    if (is.null(ft)) return(0L)
-    if (length(input$ft_filter) > 0 && "Forest_Type" %in% names(ft)) {
-      ft <- ft |> dplyr::filter(trimws(Forest_Type) %in% input$ft_filter)
-    }
-    if (length(input$sc_filter) > 0 && "Structure_Class_Description" %in% names(ft)) {
-      ft <- ft |> dplyr::filter(trimws(Structure_Class_Description) %in% input$sc_filter)
-    }
-    nrow(ft)
+    nrow(filtered_stands() %||% data.frame())
   })
 
-  output$review_summary <- renderTable({
+
+    # ─────────────────────────────────────────────────────────────────────────
+  # Page 02 (Filters) — chip toggles, state init, filtered-stands reactive
+  # ─────────────────────────────────────────────────────────────────────────
+
+  # Initialize filter state from AOI freq_table whenever it changes.
+  # On AOI selection: all forest types and structure classes start selected
+  # (the "skip filters" default). On AOI clear: state resets to NULL.
+  # NOTE: changing the AOI wipes any filter selections the user made — this
+  # is a known interim behavior; smarter merging is a future polish.
+  observeEvent(state$freq_table, {
+    ft <- state$freq_table
+    if (is.null(ft)) {
+      state$selected_forest_types     <- NULL
+      state$selected_structure_classes <- NULL
+      return()
+    }
+    if ("Forest_Type" %in% names(ft)) {
+      state$selected_forest_types <- sort(unique(trimws(ft$Forest_Type)))
+    }
+    if ("Structure_Class_Description" %in% names(ft)) {
+      state$selected_structure_classes <-
+        sort(unique(trimws(ft$Structure_Class_Description)))
+    }
+  }, ignoreNULL = FALSE)
+
+  # Chip toggle handler — single input shared by all chips on the page.
+  # JS pushes {group: "ft"|"sc", value: <chip value>} via Shiny.setInputValue
+  # with priority:"event" so consecutive clicks on the same chip both fire.
+  observeEvent(input$toggle_chip, {
+    grp <- input$toggle_chip$group
+    val <- input$toggle_chip$value
+    if (grp == "ft") {
+      cur <- state$selected_forest_types %||% character()
+      state$selected_forest_types <-
+        if (val %in% cur) setdiff(cur, val) else c(cur, val)
+    } else if (grp == "sc") {
+      cur <- state$selected_structure_classes %||% character()
+      state$selected_structure_classes <-
+        if (val %in% cur) setdiff(cur, val) else c(cur, val)
+    }
+  })
+
+  # Reset filters back to all-selected (used by both the empty-state recovery
+  # button and the Skip filters affordance in the page footer).
+  observeEvent(input$btn_filters_reset, {
+    ft <- state$freq_table
+    if (is.null(ft)) return()
+    if ("Forest_Type" %in% names(ft))
+      state$selected_forest_types <- sort(unique(trimws(ft$Forest_Type)))
+    if ("Structure_Class_Description" %in% names(ft))
+      state$selected_structure_classes <-
+        sort(unique(trimws(ft$Structure_Class_Description)))
+  })
+
+  # Skip filters → reset, then advance to review screen.
+  observeEvent(input$btn_filters_skip, {
+    ft <- state$freq_table
+    if (is.null(ft)) return()
+    if ("Forest_Type" %in% names(ft))
+      state$selected_forest_types <- sort(unique(trimws(ft$Forest_Type)))
+    if ("Structure_Class_Description" %in% names(ft))
+      state$selected_structure_classes <-
+        sort(unique(trimws(ft$Structure_Class_Description)))
+    nav_to("review")
+  })
+
+    # Total available counts (denominator for "7 of 23 selected" readouts).
+  available_forest_types <- reactive({
+    ft <- state$freq_table
+    if (is.null(ft) || !"Forest_Type" %in% names(ft)) return(character())
+    sort(unique(trimws(ft$Forest_Type)))
+  })
+  available_structure_classes <- reactive({
+    ft <- state$freq_table
+    if (is.null(ft) || !"Structure_Class_Description" %in% names(ft)) return(character())
+    sort(unique(trimws(ft$Structure_Class_Description)))
+  })
+
+  # Reactive intro copy for the page header — substitutes HVRA name and stand count.
+  output$filters_intro_copy <- renderUI({
+    nm <- trimws(input$hvra_name %||% "")
+    species_label <- if (nzchar(nm)) nm else "your species"
+    total_stands <- nrow(state$freq_table %||% data.frame())
+    p("Pick the forest types and structure classes where ",
+      tags$strong(species_label),
+      " is found. The defaults \u2014 leaving everything selected \u2014 ",
+      "include all ",
+      tags$strong(format(total_stands, big.mark = ",")),
+      " stands in your AOI.")
+  })
+
+  # Helper: render one chip section (label + count + chip grid).
+  # Used by both the forest type and structure class outputs below.
+  render_chip_section <- function(label, group_key, available, selected) {
+    chips <- lapply(available, function(v) {
+      cls <- paste("chip chip-toggle", if (v %in% selected) "chip-orange" else "")
+      tags$button(
+        class = cls,
+        `data-chip-group` = group_key,
+        `data-chip-value` = v,
+        v
+      )
+    })
+    div(
+      div(class = "section-controls",
+        div(class = "section-controls-label", label),
+        div(class = "section-controls-count",
+          tags$strong(length(selected)), " of ", tags$strong(length(available)),
+          " selected"
+        )
+      ),
+      div(class = "chip-grid", chips)
+    )
+  }
+
+
+  # Filtered stands reactive — single source of truth for the post-filter
+  # subset of the AOI. Used by the count readout on page 02, the review
+  # screen on page 03, and the data-load handler on btn_next.
+  #
+  # Filter is "active" when the user's selection is NOT the full available
+  # set. Three cases:
+  #   - all chips selected:    no filter, NAs preserved, count = full
+  #   - partial selection:     filter applied, NAs dropped, count = subset
+  #   - zero chips selected:   filter applied to empty set → 0 stands
+  #                            (triggers the empty-state recovery box)
+  filtered_stands <- reactive({
+    ft <- state$freq_table
+    if (is.null(ft)) return(NULL)
+
+    sel_ft <- state$selected_forest_types     %||% character()
+    sel_sc <- state$selected_structure_classes %||% character()
+    avail_ft <- available_forest_types()
+    avail_sc <- available_structure_classes()
+
+    if ("Forest_Type" %in% names(ft) && length(sel_ft) < length(avail_ft)) {
+      ft <- ft |> dplyr::filter(trimws(Forest_Type) %in% sel_ft)
+    }
+    if ("Structure_Class_Description" %in% names(ft) && length(sel_sc) < length(avail_sc)) {
+      ft <- ft |> dplyr::filter(trimws(Structure_Class_Description) %in% sel_sc)
+    }
+    ft
+  })
+
+
+  output$filters_ft_section <- renderUI({
+    render_chip_section(
+      label     = "Forest type",
+      group_key = "ft",
+      available = available_forest_types(),
+      selected  = state$selected_forest_types %||% character()
+    )
+  })
+
+  output$filters_sc_section <- renderUI({
+    render_chip_section(
+      label     = "Structure class",
+      group_key = "sc",
+      available = available_structure_classes(),
+      selected  = state$selected_structure_classes %||% character()
+    )
+  })
+
+  # Count readout — stat block (count > 0) or empty-state recovery (count == 0).
+  output$filters_count_readout <- renderUI({
+    n_filtered <- nrow(filtered_stands() %||% data.frame())
+    n_total    <- nrow(state$freq_table %||% data.frame())
+
+    if (n_filtered == 0 && n_total > 0) {
+      div(class = "empty-state",
+        div(class = "empty-state-headline", "Your filters returned 0 stands."),
+        div(class = "empty-state-body",
+          "Most likely your forest type and structure class selections don't overlap. ",
+          "Try widening one of them, or reset to all-selected and start over."
+        ),
+        actionButton("btn_filters_reset", "\u2190 Reset filters",
+                     class = "btn btn-ghost")
+      )
+    } else {
+      div(class = "type-stat",
+        div(class = "type-stat-num", format(n_filtered, big.mark = ",")),
+        div(class = "type-stat-label",
+          tags$strong("stands match your filters"),
+          tags$br(),
+          tags$em(paste0("down from ", format(n_total, big.mark = ","), " in your AOI"))
+        )
+      )
+    }
+  })
+
+  # Page footer — status copy + Continue + Skip filters affordance.
+  output$filters_page_footer <- renderUI({
+    n_filtered <- nrow(filtered_stands() %||% data.frame())
+    n_total    <- nrow(state$freq_table %||% data.frame())
+    all_selected <- (n_filtered == n_total) && n_total > 0
+
+    status_text <- if (n_filtered == 0)         paste0("0 stands match \u00b7 adjust filters")
+                   else if (all_selected)       paste0("All ", format(n_total, big.mark=","), " stands included")
+                   else                         paste0(format(n_filtered, big.mark=","), " stands ready")
+
+    btn <- tags$button(
+      id = "btn_next", type = "button",
+      class = "btn btn-continue action-button",
+      disabled = if (n_filtered > 0) NULL else "disabled",
+      tags$span(class = "action-label", "Continue to review \u2192")
+    )
+
+    div(class = "page-footer",
+      div(class = "page-footer-status",
+        div(class = "page-footer-status-mark"),
+        tags$span(status_text)
+      ),
+      div(class = "page-footer-actions",
+        actionButton("btn_filters_skip", "Skip filters \u2192",
+                     class = "skip-link"),
+        btn
+      )
+    )
+  })
+
+
+    output$review_summary <- renderTable({
     aoi_desc <- if (length(state$selected_regions) > 0)
       paste(state$selected_regions, collapse = ", ")
     else if (!is.null(state$aoi_stands)) "Uploaded file"
     else "Not set"
+
+    # Filter readout: "All" when the user has the full available set selected
+    # (no filtering is being applied), comma-joined names when they've
+    # narrowed it, "None" if zero (which shouldn't happen since Continue is
+    # disabled at 0 stands, but defensive).
+    ft_sel   <- state$selected_forest_types     %||% character()
+    sc_sel   <- state$selected_structure_classes %||% character()
+    ft_avail <- available_forest_types()
+    sc_avail <- available_structure_classes()
+
+    ft_text <- if (length(ft_avail) == 0) "\u2014"
+               else if (length(ft_sel) == length(ft_avail)) "All"
+               else if (length(ft_sel) == 0) "None"
+               else paste(ft_sel, collapse = ", ")
+    sc_text <- if (length(sc_avail) == 0) "\u2014"
+               else if (length(sc_sel) == length(sc_avail)) "All"
+               else if (length(sc_sel) == 0) "None"
+               else paste(sc_sel, collapse = ", ")
+
     data.frame(
       Item = c("AOI", "FVS variant", "Forest type filter",
                "Structure class filter", "Matching stands (after filters)"),
       Value = c(
         aoi_desc,
         state$variant %||% "\u2014",
-        if (length(input$ft_filter) > 0) paste(input$ft_filter, collapse = ", ") else "All",
-        if (length(input$sc_filter) > 0) paste(input$sc_filter, collapse = ", ") else "All",
+        ft_text,
+        sc_text,
         format(filtered_stand_count(), big.mark = ",")
       )
     )
   }, striped = TRUE, width = "100%")
+
 
   output$low_stand_warning <- renderUI({
     n <- filtered_stand_count()

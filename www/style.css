@@ -960,3 +960,158 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   background: rgba(250, 248, 241, 0.18);
   margin-top: 1.25rem;  /* push down to align with crumb row */
 }
+
+/* ============================================================
+   COMPONENT — Chips (design system v0.1, finally added)
+   ============================================================ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.3125rem 0.5rem;
+  background: var(--vp-paper-warm);
+  color: var(--vp-ink-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.chip-orange  { background: var(--vp-orange-tint); color: var(--vp-orange-deep); border-color: rgba(232, 90, 31, 0.25); }
+.chip-forest  { background: var(--vp-forest-tint); color: var(--vp-forest-dark); border-color: rgba(46, 64, 53, 0.22); }
+
+/* Clickable chip variant — pointer cursor + hover states */
+.chip-toggle {
+  cursor: pointer;
+  transition: all var(--t-fast);
+  font-family: var(--font-mono);
+}
+.chip-toggle:hover { border-color: var(--vp-orange); }
+.chip-toggle.chip-orange:hover { background: var(--vp-orange-deep); color: white; }
+
+.chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* ============================================================
+   COMPONENT — Section controls (page 02, page 05)
+   ALL CAPS section label with live selection count.
+   ============================================================ */
+.section-controls {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-faint);
+}
+.section-controls-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  color: var(--vp-orange-deep);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+.section-controls-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  color: var(--vp-ink-light);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-feature-settings: 'tnum';
+}
+.section-controls-count strong { color: var(--vp-ink); font-weight: 600; }
+
+/* ============================================================
+   COMPONENT — Stat block (drop-cap number + label)
+   Used for "1,247 stands match your filters · down from 4,903".
+   ============================================================ */
+.type-stat {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+}
+.type-stat-num {
+  font-family: var(--font-mono);
+  font-size: 3.5rem;
+  font-weight: 600;
+  line-height: 0.9;
+  color: var(--vp-orange);
+  letter-spacing: -0.05em;
+  font-feature-settings: 'tnum', 'lnum';
+}
+.type-stat-label {
+  font-size: var(--text-base);
+  color: var(--vp-ink-soft);
+  line-height: 1.4;
+  font-weight: 400;
+}
+.type-stat-label em { font-style: italic; font-weight: 300; color: var(--vp-ink-mid); }
+.type-stat-label strong { color: var(--vp-ink); font-weight: 600; }
+
+/* ============================================================
+   COMPONENT — Empty state (page 02, page 05 over-filter recovery)
+   ============================================================ */
+.empty-state {
+  background: linear-gradient(135deg, var(--vp-orange-tint) 0%, var(--vp-paper-warm) 140%);
+  border: 1px solid rgba(232, 90, 31, 0.18);
+  border-left: 3px solid var(--vp-orange);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+}
+.empty-state-headline {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--vp-ink);
+  margin-bottom: var(--space-2);
+  letter-spacing: -0.005em;
+}
+.empty-state-body {
+  font-size: var(--text-sm);
+  color: var(--vp-ink-soft);
+  line-height: 1.55;
+  margin-bottom: var(--space-4);
+}
+
+/* Ghost button — used for Reset filters and similar secondary actions */
+.btn.btn-ghost {
+  background: transparent;
+  color: var(--vp-ink) !important;
+  border: 1px solid var(--border-medium);
+  padding: 0.625rem 1rem;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.btn.btn-ghost:hover {
+  background: var(--vp-paper-warm) !important;
+  border-color: var(--border-strong);
+  color: var(--vp-ink) !important;
+}
+
+/* Skip-filters secondary link — sits beside the primary Continue */
+.skip-link {
+  background: transparent;
+  border: none;
+  color: var(--vp-orange-deep);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.875rem 0.5rem;
+  text-underline-offset: 4px;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  transition: color var(--t-fast);
+}
+.skip-link:hover { color: var(--vp-orange); }
