@@ -714,8 +714,12 @@ server <- function(input, output, session) {
                                    )
                                  ),
                                  tags$hr(),
-                                 div(class = "section-label", "Full results table"),
-                                 DT::dataTableOutput("rf_preview_table")
+                                 tags$details(class = "details-wrap",
+                                   tags$summary("RF table"),
+                                   div(style = "padding-top:12px;",
+                                       DT::dataTableOutput("rf_preview_table")
+                                   )
+                                 )
                              )
                     ),
                     # -- EC configuration tab --
