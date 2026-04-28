@@ -202,10 +202,25 @@ ui <- fluidPage(
     # we'll migrate screens off app_css one phase at a time.
     tags$link(rel = "stylesheet", href = "www/style.css"),
     tags$style(HTML(app_css)),
-    # Custom JS handler: scrolls to top when navigating between screens
+    
+    # Custom JS handlers
     tags$script(HTML("
+      // Scroll to top when navigating between screens.
       Shiny.addCustomMessageHandler('scroll_top', function(m) { window.scrollTo(0, 0); });
+
+      // Sidebar collapse toggle — pure client-side. Uses event delegation
+      // on document so re-renders don't break the binding. Toggles
+      // .is-collapsed on the parent .sidebar; CSS hides everything except
+      // the header. Button text flips between 'collapse \u2212' and 'expand +'.
+      document.addEventListener('click', function(e) {
+        if (e.target.matches('.sidebar-toggle')) {
+          var s = e.target.closest('.sidebar');
+          var collapsed = s.classList.toggle('is-collapsed');
+          e.target.textContent = collapsed ? 'expand +' : 'collapse \u2212';
+        }
+      });
     "))
+
   ),
   div(class = "app-container",
 
@@ -686,19 +701,10 @@ server <- function(input, output, session) {
       ),
 
       # ── Page footer ──────────────────────────────────────────────────────
-      # Pulsing orange dot + Continue button. The disabled-until-ready
-      # reactive comes in phase 4c; the button is currently always enabled
-      # so you can still navigate forward to verify other screens.
-      div(class = "page-footer",
-        div(class = "page-footer-status",
-          div(class = "page-footer-status-mark"),
-          tags$span("add HVRA name & ecoregion to continue")
-        ),
-        div(class = "page-footer-actions",
-          actionButton("btn_next", "Continue to filters \u2192",
-                       class = "btn btn-continue")
-        )
-      )
+      # Status text + Continue button rendered server-side so they react
+      # to HVRA name + AOI state. See output$page_footer.
+      uiOutput("page_footer")
+
     )
   }   
 
@@ -1127,6 +1133,29 @@ server <- function(input, output, session) {
     }
   })
 
+  # Clear AOI selection — resets state and redraws the map's polygons in
+  # their default (unselected) styling. Mirrors the redraw block in the
+  # ecoregion_map_shape_click handler; in a future cleanup pass we should
+  # extract the redraw into a helper used by both click and clear.
+  observeEvent(input$btn_aoi_clear, {
+    state$selected_regions <- character()
+    state$freq_table       <- NULL
+    state$aoi_stands       <- NULL
+    state$variant          <- NULL
+    state$aoi_method       <- NULL
+
+    leafletProxy("ecoregion_map") |>
+      clearGroup("eco") |>
+      addPolygons(
+        data = ecoregions_sf, group = "eco",
+        fillColor = ~COLOR, fillOpacity = 0.45,
+        color = "#1e3a28", weight = 1,
+        label = ~ECO_NAME,
+        layerId = ~ECO_NAME
+      )
+  })
+
+
   # Map selection callout — absolute-positioned overlay on the map (lives
   # inside .map-canvas in render_aoi). Nothing rendered in empty state so
   # the overlay disappears entirely.
@@ -1170,6 +1199,45 @@ server <- function(input, output, session) {
       }
     )
   })
+
+  # Page footer — status copy + Continue button, both reactive.
+  # Continue is enabled iff HVRA name has non-whitespace content AND
+  # an AOI has been set (state$variant is non-NULL — set by both the
+  # ecoregion click handler and the file upload handler when an AOI
+  # successfully resolves to stands). Status copy specifies exactly
+  # what's blocking so the user knows what to do next.
+  output$page_footer <- renderUI({
+    has_name <- nzchar(trimws(input$hvra_name %||% ""))
+    has_aoi  <- !is.null(state$variant)
+
+    status_text <- if (!has_name && !has_aoi) "add HVRA name & ecoregion to continue"
+                   else if (!has_name)         "add HVRA name to continue"
+                   else if (!has_aoi)          "select an AOI to continue"
+                   else                        "ready to continue"
+
+    # Build the button as raw tags$button so we control the disabled
+    # attribute precisely. The `action-button` class is what Shiny's
+    # client-side JS binding looks for to wire clicks to input$btn_next;
+    # everything else is styling. The disabled attribute is omitted (NULL)
+    # when enabled, set to "disabled" otherwise — the browser blocks click
+    # events on disabled buttons natively, so Shiny never sees them.
+    btn <- tags$button(
+      id = "btn_next",
+      type = "button",
+      class = "btn btn-continue action-button",
+      disabled = if (has_name && has_aoi) NULL else "disabled",
+      tags$span(class = "action-label", "Continue to filters \u2192")
+    )
+
+    div(class = "page-footer",
+      div(class = "page-footer-status",
+        div(class = "page-footer-status-mark"),
+        tags$span(status_text)
+      ),
+      div(class = "page-footer-actions", btn)
+    )
+  })
+
 
 
 

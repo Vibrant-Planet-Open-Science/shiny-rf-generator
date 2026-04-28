@@ -904,3 +904,14 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   transform: none;
   box-shadow: none;
 }
+
+
+/* Collapsed state — hide everything except the header.
+   Sidebar narrows, main column reflows to use the freed space. */
+.sidebar.is-collapsed > *:not(.sidebar-header) { display: none; }
+.sidebar.is-collapsed .sidebar-header {
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border-bottom: none;
+}
+.sidebar.is-collapsed { padding-bottom: var(--space-4); }
