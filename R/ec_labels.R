@@ -25,8 +25,8 @@ ec_labels <- tibble::tribble(
   "MCuFt",                    "Merchantable cubic feet",     "Stand metrics",      "ft³",          FALSE,
 
   # ── Understory ───────────────────────────────────────────────────────────────
-  "Surface_Shrub",            "Surface shrub cover",         "Understory",     "% cover",      TRUE,
-  "Surface_Herb",             "Herbaceous cover",            "Understory",     "% cover",      TRUE,
+  "Surface_Shrub",            "Surface shrub cover",         "Understory",     "tons/acre",    TRUE,
+  "Surface_Herb",             "Herbaceous cover",            "Understory",     "tons/acre",    TRUE,
 
   # ── Fuels ────────────────────────────────────────────────────────────────────
   "Forest_Down_Dead_Wood",    "Down dead wood",              "Fuels",          "tons/acre",    TRUE,

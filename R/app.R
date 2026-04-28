@@ -31,6 +31,7 @@
 
 source(here::here("R", "functions.R"))
 source(here::here("R", "ec_labels.R"))
+source(here::here("R", "ec_tooltips.R"))
 
 library(shiny)
 library(bslib)
@@ -183,6 +184,8 @@ app_css <- "
 ui <- fluidPage(
   tags$head(
     tags$style(HTML(app_css)),
+    # Bootstrap Icons for tooltip info-circle icons
+    tags$link(rel = "stylesheet", href = "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"),
     # Custom JS handler: scrolls to top when navigating between screens
     tags$script(HTML("
       Shiny.addCustomMessageHandler('scroll_top', function(m) { window.scrollTo(0, 0); });
@@ -641,7 +644,13 @@ server <- function(input, output, session) {
         div(style = "border:1px solid #e0d4b8;border-radius:8px;padding:14px 18px;margin-bottom:10px;background:#fff;",
             fluidRow(
               column(4,
-                     tags$strong(lbl),
+                     bslib::tooltip(
+                       trigger = tags$span(
+                         tags$strong(lbl),
+                         tags$i(class = "bi bi-info-circle ms-1", style = "opacity: 0.6;")
+                       ),
+                       ec_tooltip(col)
+                     ),
                      # Subcategory badge
                      tags$span(style = "display:inline-block;background:#e8dcc8;color:#4a3c2a;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:8px;", cat)
               ),
