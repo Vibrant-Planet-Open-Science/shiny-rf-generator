@@ -65,6 +65,17 @@ STEP_LABELS <- c(aoi="AOI", filters="Filters", review="Review", rftype="RF Type"
                  ecs="ECs", weights="Weights", download="Download")
 BREADCRUMB_ORDER <- c("aoi", "filters", "review", "rftype", "ecs", "weights", "download")
 
+# Wizard section grouping (v0.2 breadcrumb). Three sections name the shape
+# of the work: DEFINE (where + what), BUILD (the curve), EXPORT (the result).
+# Defined as data so the breadcrumb renderer can transform it into markup —
+# moving a screen between sections is a one-line edit here, no renderer change.
+WIZARD_SECTIONS <- list(
+  list(name = "Define", screens = c("aoi", "filters", "review")),
+  list(name = "Build",  screens = c("rftype", "ecs", "weights")),
+  list(name = "Export", screens = c("download"))
+)
+
+
 # Null-coalescing operator: returns `b` if `a` is NULL, empty, or ""
 `%||%` <- function(a, b) if (is.null(a) || length(a) == 0 || identical(a, "")) b else a
 
@@ -505,36 +516,68 @@ server <- function(input, output, session) {
   # RF type card click handler (stand vs species)
   observeEvent(input$pick_rftype, { state$rf_type <- input$pick_rftype })
 
-  # ── Breadcrumb (v0.1) ──────────────────────────────────────────────────
-  # Renders the new circle-numbered crumb list. State classes:
-  #   is-done    — past step, forest-mid fill, ✓ via CSS pseudo
-  #   is-current — active step, orange fill, white digit
-  #   is-future  — upcoming, ghosted ring with digit
-  # Re-renders whenever state$screen changes (Shiny tracks reactive
-  # dependencies inside renderUI() automatically).
+  # ── Breadcrumb (v0.2 — sectioned) ───────────────────────────────────────
+  # Renders three sections (Define / Build / Export) each containing a run
+  # of step crumbs, with vertical dividers between sections. State classes
+  # on individual crumbs unchanged from v0.1 (is-done / is-current /
+  # is-future). The section containing the current screen gets is-current
+  # on its label. WIZARD_SECTIONS (top of file) is the source data.
   output$breadcrumb <- renderUI({
     cur <- state$screen
     cur_idx <- which(BREADCRUMB_ORDER == cur)
     if (length(cur_idx) == 0) cur_idx <- 1
 
-    crumbs <- lapply(seq_along(BREADCRUMB_ORDER), function(i) {
-      key   <- BREADCRUMB_ORDER[i]
-      label <- STEP_LABELS[[key]]
-      cls   <- if (i < cur_idx)      "crumb is-done"
-               else if (i == cur_idx) "crumb is-current"
-               else                   "crumb is-future"
-      # Done crumbs show ✓ via CSS ::before; current/future show the digit.
-      mark_content <- if (i < cur_idx) NULL else as.character(i)
-      tags$span(class = cls,
-        tags$span(class = "crumb-mark", mark_content),
-        tags$span(label)
-      )
-    })
+    # Which section contains the current screen?
+    current_section_idx <- which(sapply(WIZARD_SECTIONS,
+                                        function(s) cur %in% s$screens))
 
-    # Interleave › separators between crumbs (n-1 separators for n crumbs).
-    seps <- rep(list(tags$span("\u203a", class = "crumb-sep")), length(crumbs) - 1)
-    tagList(c(rbind(crumbs[-length(crumbs)], seps), list(crumbs[[length(crumbs)]])))
+    # Helper: build one section's labeled run of crumbs + interleaved seps.
+    build_section <- function(section, is_current) {
+      section_class <- paste("crumbs-section",
+                             if (is_current) "is-current" else "")
+
+      section_steps <- list()
+      for (j in seq_along(section$screens)) {
+        key   <- section$screens[j]
+        i     <- which(BREADCRUMB_ORDER == key)
+        label <- STEP_LABELS[[key]]
+        cls   <- if (i < cur_idx)       "crumb is-done"
+                 else if (i == cur_idx) "crumb is-current"
+                 else                   "crumb is-future"
+        mark  <- if (i < cur_idx) NULL else as.character(i)
+
+        # Insert separator before all crumbs except the first in the section
+        if (j > 1) {
+          section_steps <- c(section_steps,
+                             list(tags$span("\u203a", class = "crumb-sep")))
+        }
+        section_steps <- c(section_steps, list(
+          tags$span(class = cls,
+            tags$span(class = "crumb-mark", mark),
+            tags$span(label)
+          )
+        ))
+      }
+
+      div(class = section_class,
+        div(class = "crumbs-section-label", section$name),
+        div(class = "crumbs-section-steps", section_steps)
+      )
+    }
+
+    # Build all sections with vertical dividers between them.
+    parts <- list()
+    for (s_idx in seq_along(WIZARD_SECTIONS)) {
+      if (s_idx > 1) {
+        parts <- c(parts, list(div(class = "crumbs-divider")))
+      }
+      parts <- c(parts, list(
+        build_section(WIZARD_SECTIONS[[s_idx]], s_idx == current_section_idx)
+      ))
+    }
+    tagList(parts)
   })
+
 
     # ── Species banner ──────────────────────────────────────────────────────
   # Two-state UI: empty (prompt) vs populated (HVRA name + meta).

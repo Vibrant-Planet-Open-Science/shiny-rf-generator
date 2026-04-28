@@ -915,3 +915,48 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   border-bottom: none;
 }
 .sidebar.is-collapsed { padding-bottom: var(--space-4); }
+
+/* ============================================================
+   COMPONENT — Breadcrumb sections (v0.2)
+   Replaces the v0.1 flat row of crumbs with three sections
+   (DEFINE / BUILD / EXPORT) each containing a labeled run of
+   step crumbs, with vertical dividers between sections.
+   ============================================================ */
+
+/* Override v0.1 .crumbs alignment so section labels stack
+   above their crumb runs */
+.crumbs { align-items: flex-start; }
+
+/* Make the uiOutput wrapper transparent so the renderUI's children (sections
+   and dividers) become direct flex items of .crumbs. Without this, the
+   wrapper span/div sits between .crumbs and its intended flex children
+   and the layout collapses to a vertical stack. */
+.crumbs > .shiny-html-output { display: contents; }
+
+.crumbs-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.crumbs-section-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(250, 248, 241, 0.4);
+}
+.crumbs-section.is-current .crumbs-section-label {
+  color: var(--vp-orange-deep);
+}
+.crumbs-section-steps {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.crumbs-divider {
+  width: 1px;
+  height: 1.5rem;
+  background: rgba(250, 248, 241, 0.18);
+  margin-top: 1.25rem;  /* push down to align with crumb row */
+}
