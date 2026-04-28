@@ -235,48 +235,87 @@ ui <- fluidPage(
       # Always rendered (in ui), so it persists across all wizard screens.
       uiOutput("species_banner"),
 
-      # ── TEMP HVRA inputs holder ───────────────────────────────────────────
-      div(class = "hvra-temp",
-        # ... unchanged ...
-      ),
 
-      # ── TEMP HVRA inputs holder ───────────────────────────────────────────
-      # REMOVE in the sidebar phase. Inputs MUST stay in the DOM so
-      # input$hvra_name / input$hvra_sci continue to drive the factsheet
-      # preview and download builders.
-      div(class = "hvra-temp",
-        tags$span(class = "label-temp", "TEMP — moves to sidebar:"),
-        tags$input(id = "hvra_name", type = "text",
-                   placeholder = "HVRA common name",
-                   onchange = "Shiny.setInputValue('hvra_name', this.value);"),
-        tags$input(id = "hvra_sci", type = "text",
-                   placeholder = "Scientific name",
-                   onchange = "Shiny.setInputValue('hvra_sci', this.value);")
-      ),
+      # ── Page grid: main column + sidebar ──────────────────────────────────
+      # Two-column layout; sidebar is sticky on the right at 22rem.
+      # Both children are always rendered. The sidebar holds the RF metadata
+      # inputs (HVRA name, sci name, description, authors, etc.) — these
+      # persist across all 8 wizard screens because Shiny input IDs are global.
+      div(class = "page",
 
+        # MAIN COLUMN — the wizard screen router (unchanged behavior)
+        uiOutput("main_screen"),
 
-      # ── Collapsible details drawer ──────────────────────────────────────
-      # Metadata fields that persist across all screens. Initially collapsed.
-      # Uses native HTML <details> element for collapse without JS.
-      tags$details(class = "details-wrap",
-                   tags$summary("Details (description, authors, assumptions\u2026)"),
-                   div(style = "padding-top:12px;",
-                       textAreaInput("desc", "HVRA description", rows = 2, width = "100%"),
-                       textAreaInput("ecoregion_appl", "Ecoregion applicability", rows = 2, width = "100%"),
-                       textAreaInput("authors_text", "Authors (one per line: name, affiliation)", rows = 3, width = "100%"),
-                       textAreaInput("assumptions", "Assumptions", rows = 3, width = "100%",
-                                     placeholder = "What assumptions were made?"),
-                       textAreaInput("workshop_notes", "Workshop notes", rows = 2, width = "100%"),
-                       textAreaInput("refs", "References", rows = 2, width = "100%")
-                   )
-      ),
+        # SIDEBAR — RF details panel
+        # Naming cluster (HVRA + sci) sits above a dashed separator, then
+        # provenance fields preserve Kat's original order (description →
+        # authors → assumptions → workshop notes → references). The legacy
+        # ecoregion_appl input is intentionally dropped — the AOI selection
+        # itself encodes ecoregion applicability now. build_factsheet()
+        # gracefully shows "—" for the missing field; clean up later.
+        tags$aside(class = "sidebar",
 
-      # ── Main screen area ────────────────────────────────────────────────
-      # This single uiOutput swaps between all 8 wizard screens.
-      # Controlled by state$screen via the switch() in the server.
-      uiOutput("main_screen")
+          div(class = "sidebar-header",
+            div(class = "sidebar-title", "RF ", tags$em("details")),
+            # Collapse toggle is visual scaffold only for phase 4a — wiring
+            # comes when we add per-screen conditional visibility later.
+            tags$button(class = "sidebar-toggle", "collapse \u2212")
+          ),
+
+          # — Naming cluster —
+          div(class = "sidebar-naming",
+            div(class = "sidebar-eyebrow", "Name this RF"),
+            div(class = "field",
+              tags$label(class = "field-label field-label-required",
+                         "HVRA common name"),
+              textInput("hvra_name", label = NULL,
+                        placeholder = "e.g. Whitebark pine"),
+              div(class = "field-help",
+                  "Required. Use the common name biologists in your region ",
+                  "would recognize. Populates the species banner above.")
+            ),
+            div(class = "field", style = "margin-bottom: 0;",
+              tags$label(class = "field-label field-label-optional",
+                         "Scientific name"),
+              textInput("hvra_sci", label = NULL,
+                        placeholder = "Pinus albicaulis")
+            )
+          ),
+
+          # — Provenance & assumptions —
+          div(class = "sidebar-eyebrow", "Provenance & assumptions"),
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional", "Description"),
+            textAreaInput("desc", label = NULL, rows = 3,
+              placeholder = "Brief description of what this RF represents \u2014 habitat focus, target audience, anything that helps a future user understand it.")
+          ),
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional", "Authors"),
+            textAreaInput("authors_text", label = NULL, rows = 3,
+                          placeholder = "One per line: Name, Affiliation"),
+            div(class = "field-help", "e.g. K. Duffy, Vibrant Planet")
+          ),
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional", "Assumptions"),
+            textAreaInput("assumptions", label = NULL, rows = 3,
+              placeholder = "What conditions or limits should a future user know about?")
+          ),
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional", "Workshop notes"),
+            textAreaInput("workshop_notes", label = NULL, rows = 3,
+              placeholder = "Date, attendees, key decisions, points of disagreement\u2026"),
+            div(class = "field-help",
+                "Captures the workshop context this RF emerged from.")
+          ),
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional", "References"),
+            textAreaInput("refs", label = NULL, rows = 3,
+              placeholder = "Citations, DOIs, links to source studies\u2026")
+          )
+        )
+      )
+    )
   )
-)
 
 
 # =============================================================================
