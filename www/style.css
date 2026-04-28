@@ -95,3 +95,142 @@
   /* LAYOUT */
   --max-w: 78rem;
 }
+
+/* ============================================================
+   COMPONENT — Top bar (phase 2)
+   ============================================================ */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-8);
+  background: var(--vp-forest-deep);
+  color: var(--vp-paper);
+  border-bottom: 1px solid rgba(250, 248, 241, 0.08);
+}
+.topbar-left { display: flex; align-items: center; gap: var(--space-8); }
+.topbar-brand {
+  display: flex; align-items: center; gap: var(--space-3);
+  font-weight: 600; font-size: var(--text-base); letter-spacing: -0.005em;
+}
+.topbar-mark {
+  width: 1.5rem; height: 1.5rem;
+  background: var(--vp-orange);
+  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+}
+.topbar-mark::after {
+  content: '';
+  position: absolute;
+  inset: 0.3125rem;
+  border-radius: 50%;
+  background: var(--vp-forest-deep);
+}
+.topbar-brand-name { font-weight: 700; }
+.topbar-brand-sub {
+  font-family: var(--font-mono); font-size: var(--text-eyebrow);
+  color: rgba(250, 248, 241, 0.55);
+  letter-spacing: 0.14em; text-transform: uppercase;
+  margin-left: var(--space-2); font-weight: 400;
+}
+.topbar-actions { display: flex; gap: var(--space-2); align-items: center; }
+.topbar-btn {
+  background: rgba(250, 248, 241, 0.06);
+  border: 1px solid rgba(250, 248, 241, 0.18);
+  color: var(--vp-paper);
+  padding: 0.4375rem 0.75rem;
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--t-fast);
+  letter-spacing: 0.01em;
+}
+.topbar-btn:hover {
+  background: rgba(250, 248, 241, 0.12);
+  border-color: rgba(250, 248, 241, 0.32);
+}
+
+/* ============================================================
+   COMPONENT — Wayfinding breadcrumb (phase 2)
+   ============================================================ */
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: rgba(250, 248, 241, 0.4);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color var(--t-fast);
+  padding: 0.25rem 0;
+}
+.crumb-mark {
+  display: inline-grid; place-items: center;
+  width: 1rem; height: 1rem;
+  border-radius: 50%;
+  border: 1px solid rgba(250, 248, 241, 0.25);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 0.5rem; font-weight: 500;
+  color: rgba(250, 248, 241, 0.5);
+}
+.crumb.is-current { color: var(--vp-paper); font-weight: 600; }
+.crumb.is-current .crumb-mark {
+  background: var(--vp-orange);
+  border-color: var(--vp-orange);
+  color: white;
+}
+.crumb.is-done { color: rgba(250, 248, 241, 0.7); cursor: pointer; }
+.crumb.is-done .crumb-mark {
+  background: var(--vp-forest-mid);
+  border-color: var(--vp-forest-mid);
+  color: var(--vp-paper);
+}
+.crumb.is-done .crumb-mark::before { content: '✓'; font-size: 0.625rem; }
+.crumb.is-done:hover { color: var(--vp-paper); }
+.crumb.is-future { cursor: not-allowed; opacity: 0.85; }
+.crumb-sep {
+  color: rgba(250, 248, 241, 0.2);
+  font-size: var(--text-xs);
+  user-select: none;
+}
+
+/* ============================================================
+   TEMP — HVRA inputs holder (REMOVE in sidebar phase)
+   Visually loud on purpose so it's obvious this is scaffolding.
+   ============================================================ */
+.hvra-temp {
+  background: var(--vp-orange-tint);
+  border-bottom: 1px dashed var(--vp-orange);
+  padding: var(--space-2) var(--space-8);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  color: var(--vp-orange-deep);
+}
+.hvra-temp .label-temp {
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+}
+.hvra-temp input {
+  padding: 4px 8px;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+}
+

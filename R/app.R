@@ -209,25 +209,41 @@ ui <- fluidPage(
   ),
   div(class = "app-container",
 
-      # ── Persistent header ────────────────────────────────────────────────
-      # Always visible. Contains HVRA name/scientific name inputs and breadcrumb.
-      # Uses raw HTML inputs (not Shiny textInput) for tighter styling control.
-      # The onchange handler pushes values to Shiny via setInputValue.
-      div(class = "hdr",
-          fluidRow(
-            column(5,
-                   tags$input(id = "hvra_name", type = "text",
-                              placeholder = "HVRA common name (required)",
-                              style = "width:100%;margin-bottom:6px;",
-                              onchange = "Shiny.setInputValue('hvra_name', this.value);"),
-                   tags$input(id = "hvra_sci", type = "text",
-                              placeholder = "Scientific name (optional)",
-                              style = "width:100%;",
-                              onchange = "Shiny.setInputValue('hvra_sci', this.value);")
-            ),
-            column(7, div(class = "crumb", uiOutput("breadcrumb", inline = TRUE)))
-          )
+      # ── Top bar (v0.1) ────────────────────────────────────────────────────
+      # Forest-deep persistent header with brand mark, breadcrumb, and action
+      # buttons. The HVRA name + sci name inputs that previously lived here
+      # have been moved to the .hvra-temp strip below; they migrate into the
+      # page-01 sidebar in a later phase. Action buttons are visual scaffold
+      # only (no handlers wired yet).
+      tags$header(class = "topbar",
+        div(class = "topbar-left",
+          div(class = "topbar-brand",
+            div(class = "topbar-mark"),
+            tags$span(class = "topbar-brand-name", "RF Generator"),
+            tags$span(class = "topbar-brand-sub", "v2.0")
+          ),
+          tags$nav(class = "crumbs", uiOutput("breadcrumb", inline = TRUE))
+        ),
+        div(class = "topbar-actions",
+          tags$button(class = "topbar-btn", "Save draft"),
+          tags$button(class = "topbar-btn", "View library")
+        )
       ),
+
+      # ── TEMP HVRA inputs holder ───────────────────────────────────────────
+      # REMOVE in the sidebar phase. Inputs MUST stay in the DOM so
+      # input$hvra_name / input$hvra_sci continue to drive the factsheet
+      # preview and download builders.
+      div(class = "hvra-temp",
+        tags$span(class = "label-temp", "TEMP — moves to sidebar:"),
+        tags$input(id = "hvra_name", type = "text",
+                   placeholder = "HVRA common name",
+                   onchange = "Shiny.setInputValue('hvra_name', this.value);"),
+        tags$input(id = "hvra_sci", type = "text",
+                   placeholder = "Scientific name",
+                   onchange = "Shiny.setInputValue('hvra_sci', this.value);")
+      ),
+
 
       # ── Collapsible details drawer ──────────────────────────────────────
       # Metadata fields that persist across all screens. Initially collapsed.
@@ -425,20 +441,35 @@ server <- function(input, output, session) {
   # RF type card click handler (stand vs species)
   observeEvent(input$pick_rftype, { state$rf_type <- input$pick_rftype })
 
-  # ── Breadcrumb ──────────────────────────────────────────────────────────
-  # Shows 7 steps with › separators. Current step is bold white (.active),
-  # past steps are gold (.done), future steps are muted (.todo).
+  # ── Breadcrumb (v0.1) ──────────────────────────────────────────────────
+  # Renders the new circle-numbered crumb list. State classes:
+  #   is-done    — past step, forest-mid fill, ✓ via CSS pseudo
+  #   is-current — active step, orange fill, white digit
+  #   is-future  — upcoming, ghosted ring with digit
+  # Re-renders whenever state$screen changes (Shiny tracks reactive
+  # dependencies inside renderUI() automatically).
   output$breadcrumb <- renderUI({
     cur <- state$screen
     cur_idx <- which(BREADCRUMB_ORDER == cur)
     if (length(cur_idx) == 0) cur_idx <- 1
-    parts <- lapply(seq_along(BREADCRUMB_ORDER), function(i) {
-      key <- BREADCRUMB_ORDER[i]
-      cls <- if (i < cur_idx) "done" else if (i == cur_idx) "active" else "todo"
-      tags$span(class = cls, STEP_LABELS[[key]])
+
+    crumbs <- lapply(seq_along(BREADCRUMB_ORDER), function(i) {
+      key   <- BREADCRUMB_ORDER[i]
+      label <- STEP_LABELS[[key]]
+      cls   <- if (i < cur_idx)      "crumb is-done"
+               else if (i == cur_idx) "crumb is-current"
+               else                   "crumb is-future"
+      # Done crumbs show ✓ via CSS ::before; current/future show the digit.
+      mark_content <- if (i < cur_idx) NULL else as.character(i)
+      tags$span(class = cls,
+        tags$span(class = "crumb-mark", mark_content),
+        tags$span(label)
+      )
     })
-    seps <- rep(list(tags$span(" \u203a ", class = "todo")), length(parts) - 1)
-    tagList(c(rbind(parts[-length(parts)], seps), list(parts[[length(parts)]])))
+
+    # Interleave › separators between crumbs (n-1 separators for n crumbs).
+    seps <- rep(list(tags$span("\u203a", class = "crumb-sep")), length(crumbs) - 1)
+    tagList(c(rbind(crumbs[-length(crumbs)], seps), list(crumbs[[length(crumbs)]])))
   })
 
 
