@@ -16,13 +16,13 @@ ec_labels <- tibble::tribble(
   "Total_Cover",              "Total cover",                 "Canopy",         "% cover",      TRUE,
   "CCF",                      "Crown competition factor",    "Canopy",         "",             FALSE,
 
-  # ── Tree size / structure ────────────────────────────────────────────────────
-  "QMD",                      "Quadratic mean diameter",     "Tree size",      "cm",           TRUE,
-  "BA",                       "Basal area",                  "Tree size",      "m²/ha",        TRUE,
-  "Tpa",                      "Trees per acre",              "Tree size",      "trees/acre",   TRUE,
-  "TopHt",                    "Top height",                  "Tree size",      "ft",           TRUE,
-  "SDI",                      "Stand density index",         "Tree size",      "",             FALSE,
-  "MCuFt",                    "Merchantable cubic feet",     "Tree size",      "ft³",          FALSE,
+  # ── Stand metrics ─────────────────────────────────────────────────────────────
+  "QMD",                      "Quadratic mean diameter",     "Stand metrics",      "cm",           TRUE,
+  "BA",                       "Basal area",                  "Stand metrics",      "m²/ha",        TRUE,
+  "Tpa",                      "Trees per acre",              "Stand metrics",      "trees/acre",   TRUE,
+  "TopHt",                    "Top height",                  "Stand metrics",      "ft",           TRUE,
+  "SDI",                      "Stand density index",         "Stand metrics",      "",             FALSE,
+  "MCuFt",                    "Merchantable cubic feet",     "Stand metrics",      "ft³",          FALSE,
 
   # ── Understory ───────────────────────────────────────────────────────────────
   "Surface_Shrub",            "Surface shrub cover",         "Understory",     "% cover",      TRUE,
