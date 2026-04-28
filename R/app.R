@@ -717,6 +717,9 @@ server <- function(input, output, session) {
                                  tags$details(class = "details-wrap",
                                    tags$summary("RF table"),
                                    div(style = "padding-top:12px;",
+                                       selectInput("rf_year_filter", label = "View year:",
+                                                   choices = NULL, selected = "All",
+                                                   width = "150px"),
                                        DT::dataTableOutput("rf_preview_table")
                                    )
                                  )
@@ -1147,9 +1150,11 @@ server <- function(input, output, session) {
   # ── Full results table ─────────────────────────────────────────────────
   # Wide format: rows = MgmtID x rel.time, columns = per-EC RF + Combined.
   # Capped at MAX_DISPLAY_YEAR via rf_plot_data(); downloads keep all years.
-  output$rf_preview_table <- DT::renderDataTable({
+
+  # Build the wide table from rf_plot_data (already capped at MAX_DISPLAY_YEAR)
+  rf_table_wide <- reactive({
     d <- rf_plot_data()
-    if (is.null(d)) return(data.frame(Message = "No RF results yet"))
+    if (is.null(d)) return(NULL)
     wide <- d$per_ec |>
       tidyr::pivot_wider(names_from = EC, values_from = median_rf)
     wide |>
@@ -1160,7 +1165,33 @@ server <- function(input, output, session) {
         by = c("MgmtID", "rel.time")
       ) |>
       dplyr::arrange(MgmtID, rel.time)
-  }, options = list(dom = 'frtip', pageLength = 200, scrollX = TRUE), rownames = FALSE)
+  })
+
+  # Populate the year dropdown from available display years
+  observe({
+    tbl <- rf_table_wide()
+    if (is.null(tbl)) return()
+    yrs <- sort(unique(tbl$rel.time))
+    updateSelectInput(session, "rf_year_filter",
+                      choices  = c("All", yrs),
+                      selected = "All")
+  })
+
+  # Apply year filter to the table
+  filtered_rf_tbl <- reactive({
+    tbl <- rf_table_wide()
+    if (is.null(tbl)) return(data.frame(Message = "No RF results yet"))
+    yr <- input$rf_year_filter
+    if (is.null(yr) || yr == "All") return(tbl)
+    tbl |> dplyr::filter(rel.time == as.numeric(yr))
+  })
+
+  output$rf_preview_table <- DT::renderDataTable(
+    filtered_rf_tbl(),
+    options = list(dom = "tip", searching = FALSE, paging = TRUE,
+                   pageLength = 25, scrollX = TRUE),
+    rownames = FALSE
+  )
 
   # ── EC config table (download screen) ──────────────────────────────────
   output$ec_config_table <- DT::renderDataTable({
