@@ -4,10 +4,10 @@
 #' stand values to BASE — no treatment or disturbance has happened yet.
 #'
 #' @param df Stand-level data with columns: MgmtID, StandID, Year, plus numerics.
-#' @param year Pre-treatment year to check (default 2029).
+#' @param year Pre-treatment year to check (default 2030).
 #' @param tol Floating-point tolerance (default 1e-6).
 #' @return Tibble of mismatches (empty if invariant holds).
-check_pre_treatment_invariant <- function(df, year = 2029, tol = 1e-6) {
+check_pre_treatment_invariant <- function(df, year = 2030, tol = 1e-6) {
   num_cols <- df |>
     dplyr::select(where(is.numeric)) |>
     dplyr::select(-dplyr::any_of(c("StandID", "Year"))) |>
@@ -53,15 +53,15 @@ check_pre_treatment_invariant <- function(df, year = 2029, tol = 1e-6) {
 
 #' Check Pre-Fire Timing Invariant
 #'
-#' At the pre-fire year (default 2034), BASE and FIC1-6 should have identical
+#' At the pre-fire year (default 2030), BASE and FIC1-6 should have identical
 #' stand values — fire hasn't happened yet. Treatment MgmtIDs are excluded
 #' because their treatment already occurred in 2030.
 #'
 #' @param df Stand-level data.
-#' @param year Pre-fire year to check (default 2034).
+#' @param year Pre-fire year to check (default 2030).
 #' @param tol Floating-point tolerance (default 1e-6).
 #' @return Tibble of mismatches (empty if invariant holds).
-check_pre_fire_invariant <- function(df, year = 2034, tol = 1e-6) {
+check_pre_fire_invariant <- function(df, year = 2030, tol = 1e-6) {
   fire_ids <- paste0("FIC", 1:6)
   fire_df <- df |> dplyr::filter(MgmtID %in% c("BASE", fire_ids))
   check_pre_treatment_invariant(fire_df, year = year, tol = tol)
