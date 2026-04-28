@@ -234,3 +234,112 @@
   font-size: var(--text-xs);
 }
 
+/* ============================================================
+   COMPONENT — Species banner (phase 3)
+   Persistent forest-dark strip below the top bar. Two states:
+   empty (quiet prompt + meta pending) / populated (name + meta).
+   ============================================================ */
+.species-banner {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-6);
+  padding: var(--space-3) var(--space-8);
+  background: var(--vp-forest-dark);
+  color: var(--vp-paper);
+  border-bottom: 1px solid rgba(250, 248, 241, 0.10);
+  align-items: center;
+}
+
+/* Empty state ---------------------------------------------- */
+.species-banner-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.species-banner-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  color: var(--vp-orange-bright);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+.species-banner-prompt {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: rgba(250, 248, 241, 0.55);
+  letter-spacing: 0.005em;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.species-banner-prompt em {
+  font-style: italic;
+  color: rgba(250, 248, 241, 0.45);
+  font-weight: 300;
+}
+.species-banner-prompt::after {
+  content: '→';
+  color: var(--vp-orange-bright);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  margin-left: var(--space-1);
+}
+.species-banner-meta-pending {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  color: rgba(250, 248, 241, 0.35);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  display: flex;
+  gap: var(--space-4);
+}
+.species-banner-meta-pending span::before {
+  content: '·';
+  margin-right: var(--space-2);
+  color: rgba(250, 248, 241, 0.2);
+}
+
+/* Populated state ------------------------------------------ */
+.species-banner-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.species-banner-name-common {
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--vp-paper);
+}
+.species-banner-name-sci {
+  font-style: italic;
+  font-weight: 300;
+  color: rgba(250, 248, 241, 0.6);
+  font-size: var(--text-sm);
+}
+.species-banner-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  color: rgba(250, 248, 241, 0.7);
+  letter-spacing: 0.06em;
+}
+.species-banner-meta-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.species-banner-meta-key {
+  color: rgba(250, 248, 241, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+.species-banner-meta-val {
+  color: var(--vp-paper);
+  font-weight: 500;
+  font-feature-settings: 'tnum';
+}

@@ -230,6 +230,16 @@ ui <- fluidPage(
         )
       ),
 
+      # ── Species banner ────────────────────────────────────────────────────
+      # Pure context display below the top bar. Empty until HVRA name typed.
+      # Always rendered (in ui), so it persists across all wizard screens.
+      uiOutput("species_banner"),
+
+      # ── TEMP HVRA inputs holder ───────────────────────────────────────────
+      div(class = "hvra-temp",
+        # ... unchanged ...
+      ),
+
       # ── TEMP HVRA inputs holder ───────────────────────────────────────────
       # REMOVE in the sidebar phase. Inputs MUST stay in the DOM so
       # input$hvra_name / input$hvra_sci continue to drive the factsheet
@@ -472,6 +482,68 @@ server <- function(input, output, session) {
     tagList(c(rbind(crumbs[-length(crumbs)], seps), list(crumbs[[length(crumbs)]])))
   })
 
+    # ── Species banner ──────────────────────────────────────────────────────
+  # Two-state UI: empty (prompt) vs populated (HVRA name + meta).
+  # The empty/populated decision is driven by whether input$hvra_name has
+  # any non-whitespace content. Reads input$hvra_sci + state$* for meta.
+  # Note: input IDs are global in Shiny — the HVRA inputs currently live
+  # in the .hvra-temp strip below this banner; when phase 4 moves them
+  # into the sidebar, this renderUI doesn't change.
+  output$species_banner <- renderUI({
+    nm  <- trimws(input$hvra_name %||% "")
+    sci <- trimws(input$hvra_sci  %||% "")
+
+    # ─ Empty state ────────────────────────────────────────────────
+    if (!nzchar(nm)) {
+      return(
+        div(class = "species-banner",
+          div(class = "species-banner-empty",
+            tags$span(class = "species-banner-eyebrow", "Authoring"),
+            tags$span(class = "species-banner-prompt",
+              tags$em("name your RF in the details panel")
+            )
+          ),
+          div(class = "species-banner-meta-pending",
+            tags$span("AOI pending"),
+            tags$span("variant pending")
+          )
+        )
+      )
+    }
+
+    # ─ Populated state ────────────────────────────────────────────
+    regs    <- state$selected_regions %||% character()
+    variant <- state$variant
+    stands  <- state$aoi_stands
+
+    aoi_str <- if (length(regs) > 0) {
+      paste0(length(regs), " ecoregion", if (length(regs) > 1) "s" else "")
+    } else if (!is.null(stands)) {
+      "uploaded boundary"
+    } else {
+      NULL
+    }
+
+    # Helper to build one meta cell only when the value exists
+    meta_cell <- function(key, val) {
+      div(class = "species-banner-meta-item",
+        tags$span(class = "species-banner-meta-key", key),
+        tags$span(class = "species-banner-meta-val", val)
+      )
+    }
+    meta_items <- list()
+    if (!is.null(aoi_str))  meta_items <- c(meta_items, list(meta_cell("AOI", aoi_str)))
+    if (!is.null(variant))  meta_items <- c(meta_items, list(meta_cell("Variant", variant)))
+    if (!is.null(stands))   meta_items <- c(meta_items, list(meta_cell("Stands", format(stands, big.mark = ","))))
+
+    div(class = "species-banner",
+      div(class = "species-banner-name",
+        tags$span(class = "species-banner-name-common", nm),
+        if (nzchar(sci)) tags$span(class = "species-banner-name-sci", sci)
+      ),
+      div(class = "species-banner-meta", meta_items)
+    )
+  })
 
   # =========================================================================
   # Screen renderers
