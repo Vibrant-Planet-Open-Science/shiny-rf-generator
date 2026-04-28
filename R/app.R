@@ -437,8 +437,10 @@ server <- function(input, output, session) {
         tabsetPanel(id = "aoi_tabs", type = "tabs",
                     tabPanel("Upload boundary file",
                              div(style = "padding:20px 0;",
-                                 fileInput("aoi_file", "Choose .gpkg or .tif file",
-                                           accept = c(".gpkg", ".tif"), width = "100%"),
+                                 fileInput("aoi_file", "Area of interest",
+                                           accept = c(".gpkg", ".tif", ".zip", ".shp", ".shx", ".dbf", ".prj"),
+                                           multiple = TRUE, width = "100%"),
+                                 helpText("Upload a .gpkg, .tif, zipped shapefile (.zip), or .shp with companion .shx, .dbf, .prj files."),
                                  uiOutput("aoi_file_status")
                              )
                     ),
@@ -898,17 +900,71 @@ server <- function(input, output, session) {
     }
   })
 
+  # ── AOI file reader ─────────────────────────────────────────────────
+  # Handles .zip (zipped shapefile) and .shp + companion files.
+  # Returns an sf object, or NULL if the file is .gpkg/.tif (legacy path).
+  read_aoi <- function(file_df) {
+    exts <- tolower(tools::file_ext(file_df$name))
+
+    # Zipped shapefile
+    if ("zip" %in% exts) {
+      out_dir <- tempfile("aoi_")
+      dir.create(out_dir)
+      utils::unzip(file_df$datapath[exts == "zip"][1], exdir = out_dir)
+      shp <- list.files(out_dir, pattern = "\\.shp$", full.names = TRUE, recursive = TRUE)
+      if (length(shp) == 0) stop("No .shp file found inside the uploaded zip.")
+      return(sf::st_read(shp[1], quiet = TRUE))
+    }
+
+    # Raw .shp + companion files
+    if ("shp" %in% exts) {
+      required <- c("shp", "shx", "dbf")
+      missing  <- setdiff(required, exts)
+      if (length(missing) > 0) {
+        stop(paste("Missing companion files:", paste0(".", missing, collapse = ", ")))
+      }
+      if (!"prj" %in% exts) warning("No .prj uploaded \u2014 CRS will be undefined until reprojected.")
+      stage <- tempfile("aoi_")
+      dir.create(stage)
+      file.copy(file_df$datapath, file.path(stage, file_df$name))
+      shp <- file.path(stage, file_df$name[exts == "shp"][1])
+      return(sf::st_read(shp, quiet = TRUE))
+    }
+
+    # GeoPackage or TIFF — signal to use legacy path
+    if (any(exts %in% c("gpkg", "tif"))) return(NULL)
+
+    stop("Unsupported file type. Upload .gpkg, .tif, .zip, or .shp + companion files.")
+  }
+
   # ── File upload handler ───────────────────────────────────────────────
-  # Calls get_tm_ids() from functions.R to process uploaded .gpkg/.tif.
+  # Handles .gpkg, .tif (via get_tm_ids), and .zip/.shp (via read_aoi).
   observeEvent(input$aoi_file, {
     req(input$aoi_file)
     tryCatch({
       withProgress(message = "Processing uploaded AOI...", {
-        tm_ids <- get_tm_ids(
-          aoi_path   = input$aoi_file$datapath,
-          filetype   = tools::file_ext(input$aoi_file$name),
-          unique_ids = stand_lookup
-        )
+        file_df <- input$aoi_file
+        exts <- tolower(tools::file_ext(file_df$name))
+
+        if (any(exts %in% c("zip", "shp"))) {
+          # Shapefile path: read AOI geometry, write to temp .gpkg, then run pipeline
+          aoi_sf <- read_aoi(file_df)
+          tmp_gpkg <- tempfile(fileext = ".gpkg")
+          sf::st_write(aoi_sf, tmp_gpkg, quiet = TRUE)
+          tm_ids <- get_tm_ids(
+            aoi_path   = tmp_gpkg,
+            filetype   = "gpkg",
+            unique_ids = stand_lookup
+          )
+        } else {
+          # Legacy .gpkg / .tif path
+          tm_ids <- get_tm_ids(
+            aoi_path   = file_df$datapath[1],
+            filetype   = tools::file_ext(file_df$name[1]),
+            unique_ids = stand_lookup
+          )
+        }
+
         state$freq_table <- tm_ids
         state$aoi_stands <- nrow(tm_ids)
         state$variant    <- unique(tm_ids$Variant)[1]
