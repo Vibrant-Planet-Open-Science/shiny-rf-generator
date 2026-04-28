@@ -596,31 +596,113 @@ server <- function(input, output, session) {
   # Two tabs: upload a .gpkg/.tif file, or click ecoregions on a leaflet map.
   # Both paths produce a freq_table (StandID → count) stored in state.
   render_aoi <- function() {
-    div(class = "card",
-        h2("Define your area of interest"),
-        p("Upload a boundary file or select ecoregions on the map.", class = "subtitle"),
-        tabsetPanel(id = "aoi_tabs", type = "tabs",
-                    tabPanel("Upload boundary file",
-                             div(style = "padding:20px 0;",
-                                 fileInput("aoi_file", "Choose .gpkg or .tif file",
-                                           accept = c(".gpkg", ".tif"), width = "100%"),
-                                 uiOutput("aoi_file_status")
-                             )
-                    ),
-                    tabPanel("Select on map",
-                             div(style = "padding:12px 0;",
-                                 leafletOutput("ecoregion_map", height = "400px"),
-                                 div(style = "margin-top:12px;color:#4a3c2a;font-size:13px;",
-                                     uiOutput("selected_regions_text"))
-                             )
-                    )
+    div(class = "main-col",
+
+      # ── Page header ──────────────────────────────────────────────────────
+      # Mixed-weight Poppins title, ghosted "01" numeral, mono overline +
+      # step counter, orange under-rule (via ::after pseudo-element in CSS).
+      div(class = "page-header",
+        div(class = "page-header-numeral", "01"),
+        div(class = "page-header-overline",
+          tags$span(class = "page-header-step", "Step 01 of 07"),
+          tags$span("\u00b7 Area of Interest")
         ),
-        div(class = "navbar",
-            div(),
-            actionButton("btn_next", "Next \u2192", class = "btn btn-primary btn-lg")
+        h1(tags$strong("Define"), " ", tags$em("where this RF applies.")),
+        p("Select one or more ecoregions on the map below, or upload a custom ",
+          "boundary file. Your area of interest tells us which forest stands ",
+          "to model and which FVS variant to use.")
+      ),
+
+      # ── Teaching block ───────────────────────────────────────────────────
+      # Native <details open> element gives free open/close behavior; no JS.
+      # `open = NA` produces the bare HTML `open` attribute (default-open).
+      # The "Don't show again" button is visual scaffold for now —
+      # cookie/localStorage persistence is a future polish pass.
+      tags$details(class = "teaching-block", open = NA,
+        tags$summary(class = "teaching-summary",
+          tags$span(class = "teaching-eyebrow", "First time here?"),
+          tags$span(class = "teaching-headline",
+            "A response function describes how habitat shifts when fire or ",
+            "treatment changes the landscape."
+          ),
+          tags$span(class = "teaching-chevron")
+        ),
+        div(class = "teaching-content",
+          div(class = "teaching-body",
+            "You're about to build one. Across the next seven steps, you'll ",
+            "define where this RF applies, narrow to the forest types and ",
+            "structure classes that matter for your species, choose the ",
+            tags$em("ecosystem components"),
+            " that drive its habitat, and weight them by importance and ",
+            "direction. We'll compute the curve and let you compare scenarios."
+          ),
+          div(class = "teaching-body",
+            "You don't have to predict an exact future \u2014 you're encoding ",
+            "what science and your expert judgment say about how habitat ",
+            "behaves under stress, so a planner can compare wildfire ",
+            "intensities and treatments side-by-side."
+          ),
+          div(class = "teaching-footer",
+            tags$a(class = "teaching-deepen", href = "#", "Read the methods paper"),
+            tags$button(class = "teaching-skip", "Don't show again \u2192")
+          )
         )
+      ),
+
+      # ── Map card ─────────────────────────────────────────────────────────
+      # Tab strip at top swaps Map (default) / Upload file. The underlying
+      # tabsetPanel keeps its server behavior; CSS in style.css restyles its
+      # Bootstrap nav-tabs markup. Map canvas is positioned: relative so the
+      # selection callout overlay can absolute-position inside it.
+      div(class = "map-card",
+        tabsetPanel(id = "aoi_tabs", type = "tabs",
+          tabPanel("Map",
+            div(class = "map-card-meta",
+              div(class = "map-card-overline",
+                  "RESOLVE 2017 ecoregions \u00b7 click to select"),
+              div(class = "map-card-help",
+                  "click to select \u00b7 click again to remove")
+            ),
+            div(class = "map-canvas",
+              leafletOutput("ecoregion_map", height = "100%"),
+              uiOutput("selected_regions_text")  # absolute-positioned overlay
+            ),
+            uiOutput("map_card_footer")
+          ),
+          tabPanel("Upload file",
+            div(class = "upload-zone",
+              div(class = "upload-zone-prompt",
+                tags$strong("Drop your boundary file here"),
+                " or click below to browse."),
+              div(class = "upload-zone-formats", ".gpkg \u00b7 .tif"),
+              fileInput("aoi_file", label = NULL,
+                        accept = c(".gpkg", ".tif"),
+                        buttonLabel = "Choose file",
+                        placeholder = "No file selected"),
+              uiOutput("aoi_file_status")
+            )
+          )
+        )
+      ),
+
+      # ── Page footer ──────────────────────────────────────────────────────
+      # Pulsing orange dot + Continue button. The disabled-until-ready
+      # reactive comes in phase 4c; the button is currently always enabled
+      # so you can still navigate forward to verify other screens.
+      div(class = "page-footer",
+        div(class = "page-footer-status",
+          div(class = "page-footer-status-mark"),
+          tags$span("add HVRA name & ecoregion to continue")
+        ),
+        div(class = "page-footer-actions",
+          actionButton("btn_next", "Continue to filters \u2192",
+                       class = "btn btn-continue")
+        )
+      )
     )
-  }
+  }   
+
+
 
   # ── Screen 2: Filters ──────────────────────────────────────────────────
   # Checkboxes for forest type and structure class. Choices are populated
@@ -1045,23 +1127,51 @@ server <- function(input, output, session) {
     }
   })
 
-  # Text below the map showing selected ecoregion names + stand count
+  # Map selection callout — absolute-positioned overlay on the map (lives
+  # inside .map-canvas in render_aoi). Nothing rendered in empty state so
+  # the overlay disappears entirely.
   output$selected_regions_text <- renderUI({
     regs <- state$selected_regions
-    if (length(regs) == 0) {
-      tags$em("No regions selected yet. Click an ecoregion to select.", style = "color:#7a8a75;")
-    } else {
-      tagList(
-        tags$span(tags$strong(length(regs), "selected:"), " ",
-                  paste(regs, collapse = ", ")),
-        if (!is.null(state$aoi_stands)) {
-          div(class = "status-ok",
-              paste0(format(state$aoi_stands, big.mark = ","),
-                     " stands \u2014 variant: ", state$variant))
-        }
-      )
-    }
+    if (length(regs) == 0) return(NULL)
+
+    eyebrow <- if (length(regs) == 1) "Selected \u00b7 1 ecoregion"
+               else paste0("Selected \u00b7 ", length(regs), " ecoregions")
+    name_str <- if (length(regs) == 1) regs[1]
+                else paste0(length(regs), " ecoregions")
+
+    div(class = "map-selection",
+      div(class = "map-selection-eyebrow", eyebrow),
+      div(class = "map-selection-name", name_str),
+      if (!is.null(state$aoi_stands) && !is.null(state$variant)) {
+        div(class = "map-selection-meta",
+          tags$strong(format(state$aoi_stands, big.mark = ",")),
+          " stands \u00b7 variant ",
+          tags$strong(state$variant)
+        )
+      }
+    )
   })
+
+  # Map card in-card footer — count + Clear button below the map canvas.
+  # The Clear button is visual scaffold here; wiring an observeEvent for
+  # input$btn_aoi_clear is deferred to a follow-up (or phase 4c if we want
+  # to bundle it with the Continue button reactive).
+  output$map_card_footer <- renderUI({
+    n <- length(state$selected_regions %||% character())
+    div(class = "map-card-footer",
+      div(class = "map-card-status",
+        tags$span(class = "map-card-status-num", n),
+        tags$span(class = "map-card-status-label",
+                  if (n == 1) "ecoregion selected" else "ecoregions selected")
+      ),
+      if (n > 0) {
+        actionButton("btn_aoi_clear", "Clear selection",
+                     class = "map-card-clear")
+      }
+    )
+  })
+
+
 
   # ── File upload handler ───────────────────────────────────────────────
   # Calls get_tm_ids() from functions.R to process uploaded .gpkg/.tif.
