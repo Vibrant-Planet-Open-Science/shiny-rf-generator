@@ -27,6 +27,11 @@ source(here::here("R", "check_timing_invariants.R"))
 
 EXPECTED_YEARS <- c(2025, 2030, 2031, 2034, 2035, 2040, 2045, 2050, 2055, 2060, 2065)
 
+# Track the timing-invariant defaults so report labels stay in sync with
+# whatever's set in R/check_timing_invariants.R.
+PRE_TREATMENT_YEAR <- as.integer(formals(check_pre_treatment_invariant)$year)
+PRE_FIRE_YEAR      <- as.integer(formals(check_pre_fire_invariant)$year)
+
 # Conservative physical-plausibility bounds. NA = unbounded on that side.
 # Negatives flag impossible values; upper bounds catch obvious unit/scale bugs.
 EC_RANGES <- list(
@@ -309,10 +314,10 @@ render_file_section <- function(r) {
               length(r$year_cov$missing),
               if (length(r$year_cov$missing) > 0) sprintf(": %s", paste(r$year_cov$missing, collapse = ", ")) else ""))
   if (spec$kind == "stand") {
-    add(sprintf("- %s **Pre-treatment invariant (2029)** — %d mismatches",
-                mark(nrow(r$pre_trt) == 0), nrow(r$pre_trt)))
-    add(sprintf("- %s **Pre-fire invariant (2034)** — %d mismatches",
-                mark(nrow(r$pre_fire) == 0), nrow(r$pre_fire)))
+    add(sprintf("- %s **Pre-treatment invariant (%d)** — %d mismatches",
+                mark(nrow(r$pre_trt) == 0), PRE_TREATMENT_YEAR, nrow(r$pre_trt)))
+    add(sprintf("- %s **Pre-fire invariant (%d)** — %d mismatches",
+                mark(nrow(r$pre_fire) == 0), PRE_FIRE_YEAR, nrow(r$pre_fire)))
   }
   add("")
 
