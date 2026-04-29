@@ -96,9 +96,9 @@ s3_read_rds <- function(object) {
   aws.s3::s3readRDS(
     object = object,
     bucket = S3_BUCKET,
-    region = S3_REGION,
-    key    = "",
-    secret = ""
+    region = S3_REGION#,
+    #key    = "",
+    #secret = ""
   )
 }
 
@@ -106,8 +106,8 @@ s3_list_bucket <- function(prefix) {
   aws.s3::get_bucket(
     bucket = S3_BUCKET,
     prefix = prefix,
-    region = S3_REGION,
-    key    = "",
-    secret = ""
+    region = S3_REGION#,
+    #key    = "",
+    #secret = ""
   )
 }
