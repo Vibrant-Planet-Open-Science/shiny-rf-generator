@@ -829,15 +829,42 @@ server <- function(input, output, session) {
   # Summary table showing AOI, variant, filters, and matching stand count.
   # "Looks good" button triggers the big S3 data load (see btn_next handler).
   render_review <- function() {
-    div(class = "card",
-        h2("Review"),
-        p("Confirm what data will be used before loading.", class = "subtitle"),
-        tableOutput("review_summary"),
-        uiOutput("low_stand_warning"),
-        div(class = "navbar",
-            actionButton("btn_back", "\u2190 Back", class = "btn btn-outline-secondary btn-lg"),
-            actionButton("btn_next", "Looks good \u2014 load data \u2192", class = "btn btn-primary btn-lg")
+    div(class = "main-col",
+
+      # ── Page header ──────────────────────────────────────────────────────
+      div(class = "page-header",
+        div(class = "page-header-numeral", "03"),
+        div(class = "page-header-overline",
+          tags$span(class = "page-header-step", "Define"),
+          tags$span("\u00b7 Review")
+        ),
+        h1(tags$strong("Confirm"), " ", tags$em("your setup.")),
+        p("One last look before we load the stand data. The fetch takes ",
+          "about 1 minute or more for an ecoregion-scale AOI. You can come back ",
+          "to any prior step using the breadcrumb above.")
+      ),
+
+      # ── Summary card (rendered server-side from state$*) ─────────────────
+      uiOutput("review_summary_card"),
+
+      # ── Low-stand warning (kept from legacy as a contextual safety net) ──
+      uiOutput("low_stand_warning"),
+
+      # ── Info callout: load-time heads-up ─────────────────────────────────
+      # Copy uses placeholder figures (~15s, ~50 MB) until we measure the
+      # actual fetch in production. Adjust based on real timing.
+      div(class = "callout callout-info",
+        div(class = "callout-mark", "i"),
+        div(class = "callout-text",
+          tags$strong("About 15 seconds."),
+          " Once you continue, we fetch ~50 MB of FVS output data and ",
+          "species stock tables from Open Science S3. You'll see a ",
+          "progress indicator with what's happening at each step."
         )
+      ),
+
+      # ── Page footer ──────────────────────────────────────────────────────
+      uiOutput("review_page_footer")
     )
   }
 
@@ -1579,53 +1606,129 @@ server <- function(input, output, session) {
   })
 
 
-    output$review_summary <- renderTable({
+  # ─────────────────────────────────────────────────────────────────────────
+  # Page 04 (Review) — summary card + edit-link observers + page footer
+  # ─────────────────────────────────────────────────────────────────────────
+
+  # Summary card: 4 labeled rows pulling everything from state$*.
+  # Edit links jump back to the relevant prior screen via nav_to().
+  output$review_summary_card <- renderUI({
     aoi_desc <- if (length(state$selected_regions) > 0)
       paste(state$selected_regions, collapse = ", ")
-    else if (!is.null(state$aoi_stands)) "Uploaded file"
+    else if (!is.null(state$aoi_stands)) "Uploaded boundary"
     else "Not set"
 
-    # Filter readout: "All" when the user has the full available set selected
-    # (no filtering is being applied), comma-joined names when they've
-    # narrowed it, "None" if zero (which shouldn't happen since Continue is
-    # disabled at 0 stands, but defensive).
+    aoi_count <- nrow(state$freq_table %||% data.frame())
+
+    # Filters row: read-only chips (or condensed "All ..." text when full set)
     ft_sel   <- state$selected_forest_types     %||% character()
     sc_sel   <- state$selected_structure_classes %||% character()
     ft_avail <- available_forest_types()
     sc_avail <- available_structure_classes()
+    ft_full  <- length(ft_sel) == length(ft_avail) && length(ft_avail) > 0
+    sc_full  <- length(sc_sel) == length(sc_avail) && length(sc_avail) > 0
 
-    ft_text <- if (length(ft_avail) == 0) "\u2014"
-               else if (length(ft_sel) == length(ft_avail)) "All"
-               else if (length(ft_sel) == 0) "None"
-               else paste(ft_sel, collapse = ", ")
-    sc_text <- if (length(sc_avail) == 0) "\u2014"
-               else if (length(sc_sel) == length(sc_avail)) "All"
-               else if (length(sc_sel) == 0) "None"
-               else paste(sc_sel, collapse = ", ")
+    filters_value <- if (ft_full && sc_full) {
+      tags$span(class = "summary-row-value",
+                "All forest types \u00b7 all structure classes")
+    } else {
+      tagList(
+        if (!ft_full) div(class = "chip-grid", style = "margin-bottom: 0.5rem;",
+          lapply(ft_sel, function(v) tags$span(class = "chip chip-orange", v))
+        ),
+        if (!sc_full) div(class = "chip-grid",
+          lapply(sc_sel, function(v) tags$span(class = "chip chip-orange", v))
+        )
+      )
+    }
 
-    data.frame(
-      Item = c("AOI", "FVS variant", "Forest type filter",
-               "Structure class filter", "Matching stands (after filters)"),
-      Value = c(
-        aoi_desc,
-        state$variant %||% "\u2014",
-        ft_text,
-        sc_text,
-        format(filtered_stand_count(), big.mark = ",")
+    # Build one row helper
+    row <- function(label, value, edit_id = NULL) {
+      div(class = "summary-row",
+        div(class = "summary-row-label", label),
+        div(class = "summary-row-value", value),
+        if (!is.null(edit_id))
+          actionLink(edit_id, "Edit \u2197", class = "summary-row-edit")
+        else
+          div()  # empty third column to preserve grid
+      )
+    }
+
+    div(class = "summary-card",
+      div(class = "summary-card-header",
+        div(class = "summary-card-mark"),
+        div(class = "summary-card-overline", "Setup summary")
+      ),
+      row("AOI",
+        tagList(
+          tags$strong(aoi_desc),
+          div(class = "summary-row-value-meta",
+              format(aoi_count, big.mark = ","), " stands at AOI scale")
+        ),
+        edit_id = "btn_review_edit_aoi"
+      ),
+      row("Filters", filters_value, edit_id = "btn_review_edit_filters"),
+      row("Variant",
+        tagList(
+          tags$strong(state$variant %||% "\u2014"),
+          div(class = "summary-row-value-meta",
+              "Determined by the AOI overlap with FVS variant boundaries.")
+        )
+      ),
+      row("Stands",
+        div(class = "type-stat",
+          div(class = "type-stat-num",
+              format(filtered_stand_count(), big.mark = ",")),
+          div(class = "type-stat-label",
+              tags$strong("matching all filters"))
+        )
       )
     )
-  }, striped = TRUE, width = "100%")
+  })
 
+  # Edit-link observers: jump back to the relevant prior screen.
+  observeEvent(input$btn_review_edit_aoi,     { nav_to("aoi") })
+  observeEvent(input$btn_review_edit_filters, { nav_to("filters") })
 
+  # Low-stand warning — kept as a safety net for sub-50 stand counts. Lives
+  # below the summary card as a yellow callout. Not in the page brief but
+  # protective UX worth preserving.
   output$low_stand_warning <- renderUI({
     n <- filtered_stand_count()
     if (n > 0 && n < 50) {
-      div(style = "color:#7a2020;font-weight:500;margin:12px 0;",
-          paste0("\u26a0 Only ", n, " stands match your filters. ",
-                 "Results may not be statistically robust. Consider broadening filters."))
+      div(class = "callout callout-warning",
+        div(class = "callout-mark", "!"),
+        div(class = "callout-text",
+          tags$strong("Only ", format(n, big.mark = ","), " stands match."),
+          " Results may not be statistically robust. Consider broadening ",
+          "your filters before continuing."
+        )
+      )
     }
   })
 
+  # Page footer — status copy + Load data button. Copy reflects the headline
+  # number on this page so the user sees what they're about to load.
+  output$review_page_footer <- renderUI({
+    n <- filtered_stand_count()
+    variant <- state$variant %||% "?"
+    status_text <- paste0(format(n, big.mark = ","), " stands \u00b7 ",
+                          variant, " variant \u00b7 ready to load")
+
+    btn <- tags$button(
+      id = "btn_next", type = "button",
+      class = "btn btn-continue action-button",
+      tags$span(class = "action-label", "Load data \u2192")
+    )
+
+    div(class = "page-footer",
+      div(class = "page-footer-status",
+        div(class = "page-footer-status-mark"),
+        tags$span(status_text)
+      ),
+      div(class = "page-footer-actions", btn)
+    )
+  })
 
   # =========================================================================
   # Screen 7 server logic: Weights preview (DT table, shown below real UI)
