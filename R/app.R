@@ -57,7 +57,7 @@ shiny::addResourcePath("www", here::here("www"))
 
 # Screen order — the wizard progresses through these left to right.
 # "species" is conditionally skipped when rf_type == "stand".
-SCREENS <- c("aoi", "filters", "review", "rftype", "species", "ecs", "weights", "download")
+SCREENS <- c("aoi", "filters", "review", "rftype", "ecs", "weights", "download")
 
 # Labels shown in the breadcrumb. "species" is omitted from breadcrumb
 # because it's conditional — the breadcrumb always shows 7 steps.
@@ -176,8 +176,6 @@ app_css <- "
                cursor: pointer; background: #fff; min-height: 160px; transition: all 0.15s; }
   .rf-choice:hover { border-color: #1e3a28; }
   .rf-choice.selected { border: 3px solid #1e3a28; padding: 22px; }
-  .rf-choice h3 { font-family: Georgia, serif; color: #1e3a28; margin-top: 0; }
-  .rf-choice p { color: #4a3c2a; margin-bottom: 0; font-size: 14px; }
   .navbar { display: flex; justify-content: space-between; margin-top: 30px; }
   .btn-primary { background: #1e3a28 !important; border-color: #1e3a28 !important; color: white !important; }
   .btn-primary:hover { background: #2d5a3d !important; border-color: #2d5a3d !important; }
@@ -423,31 +421,6 @@ server <- function(input, output, session) {
       })
     }
 
-
-    # -- Skip species screen if user chose "stand" RF type -------------------
-    if (s == "rftype" && isTRUE(state$rf_type == "stand")) { nav_to("ecs"); return() }
-
-    # -- Entering species screen: load StdStk from S3 (first time only) -----
-    if (s == "rftype" && isTRUE(state$rf_type == "species") && is.null(state$species_list)) {
-      tryCatch({
-        withProgress(message = "Loading species data (this may take a few moments)...", {
-          stdstk <- load_stdstk_data(state$variant)
-          aoi_stand_ids <- as.character(state$freq_table$StandID)
-          stdstk_filtered <- stdstk |>
-            dplyr::filter(as.character(StandID) %in% aoi_stand_ids)
-          # Only include species with LiveTpa > 5 at t=0 (year 2035, fire year)
-          # in at least one AOI stand. Matches WBP-DE-RF.Rmd convention.
-          qualifying <- stdstk_filtered |>
-            dplyr::filter(Year == 2035, LiveTpa > 5, !Species %in% c("All", ""))
-          species <- sort(unique(qualifying$Species))
-          state$species_list <- species
-        })
-      }, error = function(e) {
-        showNotification(paste("Failed to load species:", e$message),
-                         type = "error", duration = 10)
-      })
-    }
-
     # -- Leaving weights screen: collect settings and compute RFs ------------
     if (s == "weights") {
       picks <- isolate(selected_ecs())
@@ -496,11 +469,10 @@ server <- function(input, output, session) {
   # ── Back navigation ───────────────────────────────────────────────────────
   observeEvent(input$btn_back, {
     s <- state$screen
-    # Skip species screen going backwards too
-    if (s == "ecs" && isTRUE(state$rf_type == "stand")) { nav_to("rftype"); return() }
     idx <- which(SCREENS == s)
     if (length(idx) && idx > 1) nav_to(SCREENS[idx - 1])
   })
+
 
   # ── Reset (start over) ───────────────────────────────────────────────────
   observeEvent(input$btn_reset, {
@@ -525,6 +497,107 @@ server <- function(input, output, session) {
 
   # RF type card click handler (stand vs species)
   observeEvent(input$pick_rftype, { state$rf_type <- input$pick_rftype })
+
+  # ── Species data load (triggers when user picks "species" rf_type) ──────
+  # Loads StdStk from S3 on first species pick; cached in state$species_list
+  # for the rest of the session. Replaces the load-on-Next behavior from the
+  # pre-merge architecture, since the species picker now lives on this screen.
+  observeEvent(input$pick_rftype, {
+    if (!isTRUE(input$pick_rftype == "species")) return()
+    if (!is.null(state$species_list))           return()
+    req(state$variant, state$freq_table)
+    tryCatch({
+      withProgress(message = "Loading species data...", {
+        stdstk <- load_stdstk_data(state$variant)
+        aoi_stand_ids <- as.character(state$freq_table$StandID)
+        stdstk_filtered <- stdstk |>
+          dplyr::filter(as.character(StandID) %in% aoi_stand_ids)
+        qualifying <- stdstk_filtered |>
+          dplyr::filter(Year == 2035, LiveTpa > 5, !Species %in% c("All", ""))
+        state$species_list <- sort(unique(qualifying$Species))
+      })
+    }, error = function(e) {
+      showNotification(paste("Failed to load species:", e$message),
+                       type = "error", duration = 10)
+    })
+  }, ignoreInit = TRUE)
+
+  # ── Species pane (rftype screen, conditional content) ─────────────────
+  # Reveals when state$rf_type == "species". Three sub-states:
+  #   - list NULL     → load is in flight (or not yet triggered)
+  #   - list empty    → no qualifying species in this AOI
+  #   - list populated → checkbox group of species to pick from
+  output$species_pane <- renderUI({
+    if (!isTRUE(state$rf_type == "species")) return(NULL)
+    sp <- state$species_list
+    if (is.null(sp)) {
+      return(div(style = "padding:24px 0;color:#7a8a75;font-style:italic;",
+                 "Loading species from S3..."))
+    }
+    if (length(sp) == 0) {
+      return(div(style = "padding:24px 0;color:#7a8a75;font-style:italic;",
+                 "No species found in your AOI."))
+    }
+    div(style = "padding-top:24px;border-top:1px solid #e0d4b8;margin-top:24px;",
+        h3("Select target species"),
+        p("Choose one or more species present in your AOI.", class = "subtitle"),
+        checkboxGroupInput("species_picks", NULL, choices = sp)
+    )
+  })
+
+  # ── RF Type page footer (reactive) ────────────────────────────────────
+  # Four states per the page 04 brief:
+  #   - nothing picked            → "Pick a response function type"  (Continue disabled)
+  #   - stand picked              → "Stand-level RF · Continue to ECs"
+  #   - species + ≥1 species pick → "Species RF · {summary} · Continue to ECs"
+  #   - species, no picks         → "Pick at least one tree species above" (disabled)
+  output$rftype_page_footer <- renderUI({
+    rt    <- state$rf_type
+    picks <- input$species_picks %||% character()
+
+    species_summary <- function(p) {
+      if (length(p) == 1) p
+      else paste(length(p), "species selected")
+    }
+
+    if (is.null(rt)) {
+      status <- "Pick a response function type"
+      disabled <- TRUE
+    } else if (rt == "stand") {
+      status <- "Stand-level RF \u00b7 Continue to ECs"
+      disabled <- FALSE
+    } else if (rt == "species" && length(picks) == 0) {
+      status <- "Pick at least one tree species above"
+      disabled <- TRUE
+    } else {
+      status <- paste0("Species RF \u00b7 ", species_summary(picks),
+                       " \u00b7 Continue to ECs")
+      disabled <- FALSE
+    }
+
+    back_btn <- tags$button(
+      id = "btn_back", type = "button",
+      class = "btn btn-ghost action-button",
+      tags$span(class = "action-label", "\u2190 Back")
+    )
+
+    next_btn <- tags$button(
+      id = "btn_next", type = "button",
+      class = "btn btn-continue action-button",
+      disabled = if (disabled) "disabled" else NULL,
+      tags$span(class = "action-label", "Continue \u2192")
+    )
+
+    div(class = "page-footer",
+      div(class = "page-footer-status",
+        div(class = "page-footer-status-mark"),
+        tags$span(status)
+      ),
+      div(class = "page-footer-actions", back_btn, next_btn)
+    )
+  })
+
+
 
   # ── Breadcrumb (v0.2 — sectioned) ───────────────────────────────────────
   # Renders three sections (Define / Build / Export) each containing a run
@@ -1100,7 +1173,6 @@ server <- function(input, output, session) {
            "filters"  = render_filters(),
            "review"   = render_review(),
            "rftype"   = render_rftype(),
-           "species"  = render_species(),
            "ecs"      = render_ecs(),
            "weights"  = render_weights(),
            "download" = render_download(),
