@@ -856,7 +856,7 @@ server <- function(input, output, session) {
       div(class = "callout callout-info",
         div(class = "callout-mark", "i"),
         div(class = "callout-text",
-          tags$strong("About 15 seconds."),
+          tags$strong("About 1 minute."),
           " Once you continue, we fetch ~50 MB of FVS output data and ",
           "species stock tables from Open Science S3. You'll see a ",
           "progress indicator with what's happening at each step."
