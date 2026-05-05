@@ -942,55 +942,104 @@ server <- function(input, output, session) {
   }
 
   # ── Screen 4: RF Type ──────────────────────────────────────────────────
-  # Two clickable cards: "Stand / habitat characteristics" or "Individual
-  # tree species". Uses raw JS onclick to set input$pick_rftype.
-  # The .rf-choice CSS class handles hover/selected states.
+  # Editorial choice between stand-level and species-specific RF. Uses the
+  # design system page chrome (header / teaching / footer). The .rf-choice
+  # cards keep their v0.1 selection styling (3px forest-deep border) for
+  # now; corner radio/check indicator deferred to the CSS migration pass.
   render_rftype <- function() {
     selected <- state$rf_type
     cls_stand   <- paste("rf-choice", if (identical(selected, "stand"))   "selected" else "")
     cls_species <- paste("rf-choice", if (identical(selected, "species")) "selected" else "")
-    div(class = "card",
-        h2("What is this RF for?"),
-        p("Choose the type of response function you're building.", class = "subtitle"),
-        fluidRow(
-          column(6, div(class = cls_stand,
-                        onclick = "Shiny.setInputValue('pick_rftype', 'stand', {priority: 'event'});",
-                        h3("Stand / habitat characteristics"),
-                        p("Canopy cover, tree diameter, basal area, shrub density \u2014 describing forest structure.")
-          )),
-          column(6, div(class = cls_species,
-                        onclick = "Shiny.setInputValue('pick_rftype', 'species', {priority: 'event'});",
-                        h3("Individual tree species"),
-                        p("Stand metrics plus species-specific live TPA and live BA for one or more target species.")
-          ))
+
+    div(class = "main-col",
+
+      # ── Page header ──────────────────────────────────────────────────────
+      div(class = "page-header",
+        div(class = "page-header-numeral", "04"),
+        div(class = "page-header-overline",
+          tags$span(class = "page-header-step", "Build"),
+          tags$span("\u00b7 Response function type")
         ),
-        div(class = "navbar",
-            actionButton("btn_back", "\u2190 Back", class = "btn btn-outline-secondary btn-lg"),
-            actionButton("btn_next", "Next \u2192", class = "btn btn-primary btn-lg")
+        h1(tags$strong("Choose"), " ", tags$em("what your RF is about.")),
+        p("A response function can describe how a forest stand changes overall, ",
+          "or how one or more tree species fare within it. The choice depends on ",
+          "what your HVRA actually responds to.")
+      ),
+
+      # ── Teaching block (default open on first visit) ─────────────────────
+      tags$details(class = "teaching-block", open = NA,
+        tags$summary(class = "teaching-summary",
+          tags$span(class = "teaching-eyebrow", "Stand-level vs species-specific \u2014 which fits?"),
+          tags$span(class = "teaching-headline",
+            "Stand-level reads structure across the forest. ",
+            "Species-specific zooms into one or more target species."
+          ),
+          tags$span(class = "teaching-chevron")
+        ),
+        div(class = "teaching-content",
+          div(class = "teaching-body",
+            tags$strong("Stand-level RFs"), " use whole-stand metrics. ",
+            "Use them when your species responds to ", tags$em("structural conditions"),
+            " \u2014 canopy density, snag count, surface fuel load \u2014 ",
+            "regardless of which tree species are present."
+          ),
+          div(class = "teaching-body",
+            tags$strong("Species-specific RFs"), " zoom in on one or more tree species' presence. ",
+            "Use them when your HVRA depends on specific trees \u2014 ",
+            "whitebark pine for Clark's nutcracker, or oak ",
+            tags$em("or"), " maple ", tags$em("or"), " madrone ",
+            "for an acorn-or-mast-dependent cavity nester."
+          ),
+          div(class = "teaching-body",
+            "Most workshops produce stand-level RFs. ",
+            "Species-specific is the right choice maybe a quarter of the time."
+          ),
+          div(class = "teaching-footer",
+            tags$a(class = "teaching-deepen", href = "#", "See methods paper \u00b7 \u00a73.2")
+          )
         )
+      ),
+
+      # ── Two choice cards ─────────────────────────────────────────────────
+      fluidRow(
+        column(6, div(class = cls_stand,
+          onclick = "Shiny.setInputValue('pick_rftype', 'stand', {priority: 'event'});",
+          div(class = "section-label", "Stand-level"),
+          h2(tags$strong("Whole-stand"), " ", tags$em("metrics.")),
+          p("Canopy cover, structure, fuels, snag density. The forest as a system."),
+          div(class = "chip-grid",
+            tags$span(class = "chip", "Canopy cover"),
+            tags$span(class = "chip", "QMD"),
+            tags$span(class = "chip", "Basal area"),
+            tags$span(class = "chip", "Snag density")
+          )
+        )),
+        column(6, div(class = cls_species,
+          onclick = "Shiny.setInputValue('pick_rftype', 'species', {priority: 'event'});",
+          div(class = "section-label", "Species-specific"),
+          h2(tags$strong("One or more"), " ", tags$em("tree species.")),
+          p("Live trees per acre or basal area for the species your HVRA depends on."),
+          div(class = "chip-grid",
+            tags$span(class = "chip", "Whitebark pine"),
+            tags$span(class = "chip", "Oak"),
+            tags$span(class = "chip", "Douglas-fir"),
+            tags$span(class = "chip", "+ more")
+          )
+        ))
+      ),
+
+      # ── Species picker pane (conditional on rf_type == "species") ────────
+      # Currently the legacy flat checkbox list — pending Kat's reference data
+      # before we build the grouped/badged/searchable picker from the mockup.
+      uiOutput("species_pane"),
+
+      # ── Page footer ──────────────────────────────────────────────────────
+      uiOutput("rftype_page_footer")
     )
   }
 
-  # ── Screen 5: Species picker (conditional) ─────────────────────────────
-  # Only shown when rf_type == "species". Lists species present in the AOI,
-  # loaded from StdStk data on S3. Falls back to mock_species if not loaded.
-  render_species <- function() {
-    sp <- isolate(state$species_list) %||% mock_species
-    div(class = "card",
-        h2("Select target species"),
-        p("Choose one or more species present in your AOI. Species-specific metrics will be added to the EC list.",
-          class = "subtitle"),
-        if (length(sp) == 0) {
-          p("No species found in your AOI.", style = "color:#7a8a75;font-style:italic;")
-        } else {
-          checkboxGroupInput("species_picks", NULL, choices = sp)
-        },
-        div(class = "navbar",
-            actionButton("btn_back", "\u2190 Back", class = "btn btn-outline-secondary btn-lg"),
-            actionButton("btn_next", "Next \u2192", class = "btn btn-primary btn-lg")
-        )
-    )
-  }
+
+
 
   # ── Screen 6: EC picker ────────────────────────────────────────────────
   # Checkboxes for ecosystem components, grouped by subcategory.
