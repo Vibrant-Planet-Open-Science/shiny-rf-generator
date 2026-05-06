@@ -54,6 +54,7 @@ CLAUDE.md
 
 # macOS
 .DS_Store
+
 # renv
 renv/library/
 renv/local/
@@ -61,3 +62,7 @@ renv/cellar/
 renv/lock/
 renv/python/
 renv/staging/
+
+# Source data artifacts (regenerable from build scripts)
+data/*.xls
+data/*.xlsx

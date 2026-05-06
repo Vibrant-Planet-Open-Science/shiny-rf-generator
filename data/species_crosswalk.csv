@@ -1,0 +1,430 @@
+code,common_name,scientific_name
+ABIES,Fir,Abies
+ABAM,Pacific silver fir,Abies amabilis
+ABBR,Bristlecone fir,Abies bracteata
+ABCO,White fir,Abies concolor
+ABCOC,White fir,Abies concolor var. concolor
+ABCOL,Sierra white fir,Abies concolor var. lowiana
+ABGR,Grand fir,Abies grandis
+ABLA,Subalpine fir,Abies lasiocarpa
+ABLAA,Corkbark fir,Abies lasiocarpa var. arizonica
+ABLAL,Subalpine fir,Abies lasiocarpa var. lasiocarpa
+ABMA,California red fir,Abies magnifica
+ABMAS,Shasta red fir,Abies magnifica var. shastensis
+ABPR,Noble fir,Abies procera
+ABSH,Shasta red fir,Abies shastensis
+ACER,Maple,Acer
+ACGL,Rocky Mountain maple,Acer glabrum
+ACGLD3,Rocky Mountain maple,Acer glabrum var. diffusum
+ACGLD4,Douglas maple,Acer glabrum var. douglasii
+ACGLG2,Rocky Mountain maple,Acer glabrum var. glabrum
+ACGLG,Greene's maple,Acer glabrum var. greenei
+ACGLN2,New Mexico maple,Acer glabrum var. neomexicanum
+ACGLT2,Torrey maple,Acer glabrum var. torreyi
+ACGR3,Bigtooth maple,Acer grandidentatum
+ACGRG,Bigtooth maple,Acer grandidentatum var. grandidentatum
+ACGRS,Canyon maple,Acer grandidentatum var. sinuosum
+ACMA3,Bigleaf maple,Acer macrophyllum
+ACNE2,Boxelder,Acer negundo
+ACNEA,Arizona boxelder,Acer negundo var. arizonicum
+ACNEC2,California boxelder,Acer negundo var. californicum
+ACNEI2,Boxelder,Acer negundo var. interius
+ACNEN,Boxelder,Acer negundo var. negundo
+ACNET,Boxelder,Acer negundo var. texanum
+ACPL,Norway maple,Acer platanoides
+ACSA2,Silver maple,Acer saccharinum
+AECA,California buckeye,Aesculus californica
+AEHI,Horse chestnut,Aesculus hippocastanum
+AIAL,Tree of heaven,Ailanthus altissima
+ALJU,Silktree,Albizia julibrissin
+ALLE,Woman's tongue,Albizia lebbeck
+ALNUS,Alder,Alnus
+ALCO13,Italian alder,Alnus cordata
+ALIN2,Gray alder,Alnus incana
+ALINT,Thinleaf alder,Alnus incana ssp. tenuifolia
+ALOB2,Arizona alder,Alnus oblongifolia
+ALRH2,White alder,Alnus rhombifolia
+ALRU2,Red alder,Alnus rubra
+ALVI5,Green alder,Alnus viridis
+ALVIC,Mountain alder,Alnus viridis ssp. crispa
+ALVIF,Siberian alder,Alnus viridis ssp. fruticosa
+ALVIS,Sitka alder,Alnus viridis ssp. sinuata
+ARBUT,Madrone,Arbutus
+ARAR2,Arizona madrone,Arbutus arizonica
+ARME,Pacific madrone,Arbutus menziesii
+ARXA80,Texas madrone,Arbutus xalapensis
+BETUL,Birch,Betula
+BEGL,Resin birch,Betula glandulosa
+BENA,Dwarf birch,Betula nana
+BENE4,Resin birch,Betula neoalaskana
+BEOC2,Water birch,Betula occidentalis
+BEPA,Paper birch,Betula papyrifera
+BEPAC,Paper birch,Betula papyrifera var. commutata
+BEPAK,Kenai birch,Betula papyrifera var. kenaica
+BEPAP,Paper birch,Betula papyrifera var. papyrifera
+BEPU4,Bog birch,Betula pumila
+BEPUG,Bog birch,Betula pumila var. glandulifera
+BEUT,Birch,Betula utahensis
+CANO9,Alaska cedar,Callitropsis nootkatensis
+CADE27,Incense cedar,Calocedrus decurrens
+CAGI10,Saguaro,Carnegiea gigantea
+CATAL,Catalpa,Catalpa
+CABI8,Southern catalpa,Catalpa bignonioides
+CASP8,Northern catalpa,Catalpa speciosa
+CELTI,Hackberry,Celtis
+CEEH,Spiny hackberry,Celtis ehrenbergiana
+CELA,Sugarberry,Celtis laevigata
+CELAB,Sugarberry,Celtis laevigata var. brevipes
+CELAR,Netleaf hackberry,Celtis laevigata var. reticulata
+CELAT8,Texan sugarberry,Celtis laevigata var. texana
+CEOC,Common hackberry,Celtis occidentalis
+CERCO,Mountain mahogany,Cercocarpus
+CEIN7,Littleleaf mountain mahogany,Cercocarpus intricatus
+CELE3,Curl-leaf mountain mahogany,Cercocarpus ledifolius
+CELEI,Curl-leaf mountain mahogany,Cercocarpus ledifolius var. intercedens
+CELEL,Curl-leaf mountain mahogany,Cercocarpus ledifolius var. ledifolius
+CEMO2,Alderleaf mountain mahogany,Cercocarpus montanus
+CEMOG,Birchleaf mountain mahogany,Cercocarpus montanus var. glaber
+CEMOM4,Alderleaf mountain mahogany,Cercocarpus montanus var. montanus
+CEMOP,Hairy mountain mahogany,Cercocarpus montanus var. paucidentatus
+CHAMA4,Cedar,Chamaecyparis
+CHLA,Port Orford cedar,Chamaecyparis lawsoniana
+CHRYS15,Chinquapin,Chrysolepis
+CHCH7,Giant chinquapin,Chrysolepis chrysophylla
+CHCHC4,Giant chinquapin,Chrysolepis chrysophylla var. chrysophylla
+CHCHM,Giant chinquapin,Chrysolepis chrysophylla var. minor
+CORNU,Dogwood,Cornus
+COGL3,Brown dogwood,Cornus glabrata
+CONU4,Pacific dogwood,Cornus nuttallii
+COSE16,Redosier dogwood,Cornus sericea
+COSEO,Western dogwood,Cornus sericea ssp. occidentalis
+COSES,Redosier dogwood,Cornus sericea ssp. sericea
+COSE3,Blackfruit dogwood,Cornus sessilis
+CORYL,Hazelnut,Corylus
+COCO6,Beaked hazelnut,Corylus cornuta
+COCOC,California hazelnut,Corylus cornuta var.californica
+CRATA,Hawthorn,Crataegus
+CRCH,Fireberry hawthorn,Crataegus chrysocarpa
+CRCR2,Cockspur hawthorn,Crataegus crus-galli
+CRDO2,Black hawthorn,Crataegus douglasii
+CRER,Cerro hawthorn,Crataegus erythropoda
+CRMO3,Oneseed hawthorn,Crataegus monogyna
+CRRI,River hawthorn,Crataegus rivularis
+CRSA2,Willow hawthorn,Crataegus saligna
+CRSU5,Fleshy hawthorn,Crataegus succulenta
+CRSU16,Suksdorf's hawthorn,Crataegus suksdorfii
+CUPRE,Cypress,Cupressus
+CUAB,Santa Cruz cypress,Cupressus abramsiana
+CUAR,Arizona cypress,Cupressus arizonica
+CUARA,Arizona cypress,Cupressus arizonica ssp. arizonica
+CUARN2,Paiute cypress,Cupressus arizonica ssp. nevadensis
+CUARS2,Cuyamaca cypress,Cupressus arizonica ssp. stephensonii
+CUBA,Modoc cypress,Cupressus bakeri
+CUFO2,Tecate cypress,Cupressus forbesii
+CUGO,Gowen cypress,Cupressus goveniana
+CUGOG,Gowen cypress,Cupressus goveniana ssp. goveniana
+CUGOP2,Pygmy cypress,Cupressus goveniana ssp. pygmaea
+CUMA,McNab's cypress,Cupressus macnabiana
+CUMA2,Monterey cypress,Cupressus macrocarpa
+CUSA3,Sargent's cypress,Cupressus sargentii
+DIOSP,Diospyros,Diospyros
+DIVI5,Common persimmon,Diospyros virginiana
+ELAEA,Oleaster,Elaeagnus
+ELAN,Russian olive,Elaeagnus angustifolia
+ERJA3,Loquat,Eriobotrya japonica
+EUCAL,Gum,Eucalyptus
+EUCA2,River redgum,Eucalyptus camaldulensis
+EUCL,Sugargum,Eucalyptus cladocalyx
+EUGL,Tasmanian bluegum,Eucalyptus globulus
+EUGLG,Tasmanian bluegum,Eucalyptus globulus ssp. globulus
+EUMO5,Gum,Eucalyptus mortoniana
+EUPO,Redbox,Eucalyptus polyanthemos
+EUPU,Silverleaf mountain gum,Eucalyptus pulverulenta
+EUSI2,Red ironbark,Eucalyptus sideroxylon
+EUTE,Forest redgum,Eucalyptus tereticornis
+EUTO11,Coral gum,Eucalyptus torquata
+EUVI,Manna gum,Eucalyptus viminalis
+FICUS,Fig,Ficus
+FICA,Edible fig,Ficus carica
+FIPA2,Punjab fig,Ficus palmata
+FIRU4,Port Jackson fig,Ficus rubiginosa
+FRPU7,Cascara buckthorn,Frangula purshiana
+FRAXI,Ash,Fraxinus
+FRAN2,Singleleaf ash,Fraxinus anomala
+FRANA,Singleleaf ash,Fraxinus anomala var. anomala
+FRANL,Singleleaf ash,Fraxinus anomala var. lowellii
+FRCU,Fragrant ash,Fraxinus cuspidata
+FRDI2,California ash,Fraxinus dipetala
+FRGO,Goodding's ash,Fraxinus gooddingii
+FRGR2,Gregg's ash,Fraxinus greggii
+FRLA,Oregon ash,Fraxinus latifolia
+FRPA4,Chihuahuan ash,Fraxinus papillosa
+FRPE,Green ash,Fraxinus pennsylvanica
+FRUH,Shamel ash,Fraxinus uhdei
+FRVE2,Velvet ash,Fraxinus velutina
+FRCA6,California flannelbush,Fremontodendron californicum
+FRME2,Mexican flannelbush,Fremontodendron mexicanum
+GLEDI,Locust,Gleditsia
+GLTR,Honeylocust,Gleditsia triacanthos
+ILEX,Holly,Ilex
+ILAQ80,English holly,Ilex aquifolium
+ILAT,Topal holly,Ilex attenuata
+JUGLA,Walnut,Juglans
+JUCA,Southern California walnut,Juglans californica
+JUHI,Northern California walnut,Juglans hindsii
+JUMA,Arizona walnut,Juglans major
+JUMI,Little walnut,Juglans microcarpa
+JUNI,Black walnut,Juglans nigra
+JURE80,English walnut,Juglans regia
+JUNIP,Juniper,Juniperus
+JUCA7,California juniper,Juniperus californica
+JUCO11,Redberry juniper,Juniperus coahuilensis
+JUCOA2,Redberry juniper,Juniperus coahuilensis var. arizonica
+JUCOC2,Redberry juniper,Juniperus coahuilensis var. coahuilensis
+JUCO6,Common juniper,Juniperus communis
+JUCOD,Common juniper,Juniperus communis var. depressa
+JUCOM2,Common juniper,Juniperus communis var. montana
+JUCOS2,Common juniper,Juniperus communis var. saxatilis
+JUDE2,Alligator juniper,Juniperus deppeana
+JUMO,Oneseed juniper,Juniperus monosperma
+JUOC,Western juniper,Juniperus occidentalis
+JUOCA,Western juniper,Juniperus occidentalis var. australis
+JUOCO,Western juniper,Juniperus occidentalis var. occidentalis
+JUOS,Utah juniper,Juniperus osteosperma
+JUPI,Pinchot's juniper,Juniperus pinchotii
+JUSC2,Rocky Mountain juniper,Juniperus scopulorum
+JUVI,Eastern redcedar,Juniperus virginiana
+JUVIV,Eastern redcedar,Juniperus virginiana var. virginiana
+KOPA,Goldenrain tree,Koelreuteria paniculata
+LAAN2,Golden chain tree,Laburnum anagyroides
+LARIX,Larch,Larix
+LALA,Tamarack,Larix laricina
+LALY,Subalpine larch,Larix lyallii
+LAOC,Western larch,Larix occidentalis
+LANO80,Sweet bay,Laurus nobilis
+LIST2,Sweetgum,Liquidambar styraciflua
+LITHO,Tanoak,Lithocarpus
+LIDE3,Tanoak,Lithocarpus densiflorus
+LIDED2,Tanoak,Lithocarpus densiflorus var. densiflorus
+LIDEE,Tanoak,Lithocarpus densiflorus var. echinoides
+LYONO,Catalina ironwood,Lyonothamnus
+LYFL2,Catalina ironwood,Lyonothamnus floribundus
+LYFLA,Fern-leaf Catalina ironwood,Lyonothamnus floribundus ssp. aspleniifolius
+LYFLF,Catalina ironwood,Lyonothamnus floribundus ssp. floribundus
+MALUS,Apple,Malus
+MADA5,Crab apple,Malus dawsoniana
+MAFU,Oregon crab apple,Malus fusca
+MAPU,Paradise apple,Malus pumila
+OLTE,Desert ironwood,Olneya tesota
+OSKN,Knowlton's hophornbeam,Ostrya knowltonii
+OSVI,Hophornbeam,Ostrya virginiana
+PICEA,Spruce,Picea
+PIBR,Brewer spruce,Picea breweriana
+PIEN,Engelmann spruce,Picea engelmannii
+PIENE,Engelmann spruce,Picea engelmannii var. engelmannii
+PIENM2,Engelmann spruce,Picea engelmannii var. mexicana
+PIGL,White spruce,Picea glauca
+PILU,Hybrid spruce,Picea lutzii
+PIMA,Black spruce,Picea mariana
+PIPU,Blue spruce,Picea pungens
+PISI,Sitka spruce,Picea sitchensis
+PINUS,Pine,Pinus
+PIAL,Whitebark pine,Pinus albicaulis
+PIAR,Bristlecone pine,Pinus aristata
+PIAR5,Arizona pine,Pinus arizonica
+PIARA,Arizona pine,Pinus arizonica var. arizonica
+PIARS2,Arizona pine,Pinus arizonica var. stormiae
+PIAT,Knobcone pine,Pinus attenuata
+PIAT2,Hybrid pine,Pinus attenuradiata
+PIBA,Foxtail pine,Pinus balfouriana
+PIBAA,Foxtail pine,Pinus balfouriana ssp. austrina
+PIBAB,Foxtail pine,Pinus balfouriana ssp. balfouriana
+PICE,Mexican pinyon,Pinus cembroides
+PICO,Lodgepole pine,Pinus contorta
+PICOB,Bolander beach pine,Pinus contorta var. bolanderi
+PICOC,Beach pine,Pinus contorta var. contorta
+PICOL,Lodgepole pine,Pinus contorta var. latifolia
+PICOM,Sierra lodgepole pine,Pinus contorta var. murrayana
+PICO3,Coulter pine,Pinus coulteri
+PIDI3,Border pinyon,Pinus discolor
+PIED,Twoneedle pinyon,Pinus edulis
+PIEN2,Apache pine,Pinus engelmannii Carriere
+PIFL2,Limber pine,Pinus flexilis
+PIHA7,Aleppo pine,Pinus halepensis
+PIJE,Jeffrey pine,Pinus jeffreyi
+PILA,Sugar pine,Pinus lambertiana
+PILE,Chihuahuan pine,Pinus leiophylla
+PILEC,Chihuahuan pine,Pinus leiophylla var. Chihuahuan
+PILO,Great Basin bristlecone pine,Pinus longaeva
+PIMO,Singleleaf pinyon,Pinus monophylla
+PIMOC,Singleleaf pinyon,Pinus monophylla
+PIMOF,Singleleaf pinyon,Pinus monophylla var. fallax
+PIMOM2,Singleleaf pinyon,Pinus monophylla var. monophylla
+PIMO3,Western white pine,Pinus monticola
+PIMU,Bishop pine,Pinus muricata
+PINI,Austrian pine,Pinus nigra
+PIPI7,Italian stone pine,Pinus pinea
+PIPO,Ponderosa pine,Pinus ponderosa
+PIPOP,Ponderosa pine,Pinus ponderosa var. ponderosa
+PIPOS,Ponderosa pine,Pinus ponderosa var. scopulorum
+PIQU,Parry pinyon,Pinus quadrifolia
+PIRA2,Monterey pine,Pinus radiata
+PISA2,California foothill pine,Pinus sabiniana
+PIST3,Southwestern white pine,Pinus strobiformis
+PISY,Scots pine,Pinus sylvestris
+PITO,Torrey pine,Pinus torreyana
+PITOI2,Santa Cruz Island Torrey pine,Pinus torreyana var. insularis
+PITOT2,Torrey pine,Pinus torreyana var. torreyana
+PIWA,Washoe pine,Pinus washoensis
+PISTA,Pistache,Pistacia
+PIAT4,Mt. Atlas mastic tree,Pistacia atlantica
+PICH4,Chinese pistache,Pistacia chinensis
+PLRA,California sycamore,Platanus racemosa
+PLWR2,Arizona sycamore,Platanus wrightii
+POPUL,Cottonwood,Populus
+POAC5,Lanceleaf cottonwood,Populus acuminata
+POAL7,White poplar,Populus alba
+POAN3,Narrowleaf cottonwood,Populus angustifolia
+POBA2,Balsam poplar,Populus balsamifera
+POBAB2,Balsam poplar,Populus balsamifera ssp. balsamifera
+POBAT,Black cottonwood,Populus balsamifera ssp. trichocarpa
+POBR7,Hybrid balsam poplar,Populus brayshawii
+POCA19,Carolina poplar,Populus canadensis
+PODE3,Eastern cottonwood,Populus deltoides
+PODEM,Plains cottonwood,Populus deltoides ssp. monilifera
+PODEW,Rio Grande cottonwood,Populus deltoides ssp. wislizeni
+POFR2,Fremont cottonwood,Populus fremontii
+POFRF3,Fremont cottonwood,Populus fremontii ssp. fremontii
+POFRM,Fremont cottonwood,Populus fremontii ssp. mesetae
+POHI8,NA,Populus hinckleyana
+POIN23,Cottonwood,Populus inopina
+POJA2,Balm-of-Gilead,Populus jackii
+PONI,Lombardy poplar,Populus nigra
+POPA11,Parry cottonwood,Populus parryi
+POTR5,Quaking aspen,Populus tremuloides
+PROSO,Mesquite,Prosopis
+PRGL2,Honey mesquite,Prosopis glandulosa
+PRPU,Screwbean mesquite,Prosopis pubescens
+PRVE,Velvet mesquite,Prosopis velutina
+PRUNU,Plum,Prunus
+PRAM,American plum,Prunus americana
+PRAV,Sweet cherry,Prunus avium
+PRCE,Sour cherry,Prunus cerasus
+PRDO,European plum,Prunus domestica
+PREM,Bitter cherry,Prunus emarginata
+PREME,Bitter cherry,Prunus emarginata var. emarginata
+PRVID,Western chokecherry,Prunus virginiana var. demissa
+PRVIM,Black chokecherry,Prunus virginiana var. melanocarpa
+PRVIV,Chokecherry,Prunus virginiana var. virginiana
+PSEUD7,Douglas-fir,Pseudotsuga
+PSMA,Bigcone Douglas-fir,Pseudotsuga macrocarpa
+PSME,Douglas-fir,Pseudotsuga menziesii
+PSMEG,Rocky Mountain Douglas-fir,Pseudotsuga menziesii var. glauca
+PSMEM,Douglas-fir,Pseudotsuga menziesii var. menziesii
+PYCO,Common pear,Pyrus communis
+QUERC,Oak,Quercus
+QUAG,California live oak,Quercus agrifolia
+QUAGA,California live oak,Quercus agrifolia var. agrifolia
+QUAGO,Coastal live oak,Quercus agrifolia var. oxyadenia
+QUAR,Arizona white oak,Quercus arizonica
+QUBE5,Scrub oak,Quercus berberidifolia
+QUCH2,Canyon live oak,Quercus chrysolepis
+QUCHC,Canyon live oak,Quercus chrysolepis var. chrysolepis
+QUCHN,Canyon live oak,Quercus chrysolepis var. nana
+QUCO7,Muller oak,Quercus cornelius-mulleri
+QUDO,Blue oak,Quercus douglasii
+QUDU,Coastal sage scrub oak,Quercus dumosa
+QUDU4,Leather oak,Quercus durata
+QUEM,Emory oak,Quercus emoryi
+QUEN,Engelmann oak,Quercus engelmannii
+QUGA,Gambel oak,Quercus gambelii
+QUGAG,Gambel oak,Quercus gambelii var. gambelii
+QUGA4,Oregon white oak,Quercus garryana
+QUGAF,Oregon white oak,Quercus garryana var. fruticosa
+QUGAG2,Oregon white oak,Quercus garryana var. garryana
+QUGAS,Oregon white oak,Quercus garryana var. semota
+QUGR3,Gray oak,Quercus grisea
+QUHY,Silverleaf oak,Quercus hypoleucoides
+QUJO3,Tucker oak,Quercus john-tuckeri
+QUKE,California black oak,Quercus kelloggii
+QULO,Valley oak,Quercus lobata
+QUMA2,Bur oak,Quercus macrocarpa
+QUMO2,Oracle oak,Quercus moreha
+QUMU,Chinquapin oak,Quercus muehlenbergii
+QUOB,Mexican blue oak,Quercus oblongifolia
+QUPA10,Palmer oak,Quercus palmeri
+QUPA4,NA,Quercus pauciloba
+QURU4,Netleaf oak,Quercus rugosa
+QUSA2,Deer oak,Quercus sadleriana
+QUTO2,Toumey oak,Quercus toumeyi
+QUTU2,Sonoran scrub oak,Quercus turbinella
+QUUN,NA,Quercus undulata
+QUVA,Huckleberry oak,Quercus vacciniifolia
+QUWI2,Interior live oak,Quercus wislizeni
+QUWIF,Interior live oak,Quercus wislizeni var. frutescens
+QUWIW,Interior live oak,Quercus wislizeni var. wislizeni
+ROBIN,Locust,Robinia
+ROHI,Bristly locust,Robinia hispida
+ROHIF8,Bristly locust,Robinia hispida var. fertilis
+ROHIH,Bristly locust,Robinia hispida var. hispida
+RONE,New Mexico locust,Robinia neomexicana
+RONEN,New Mexico locust,Robinia neomexicana var. neomexicana
+RONER,Rusby's locust,Robinia neomexicana var. rusbyi
+ROPS,Black locust,Robinia pseudoacacia
+SALIX,Willow,Salix
+SAAL,Feltleaf willow,Salix alaxensis
+SAALA,Feltleaf willow,Salix alaxensis var. alaxensis
+SAALL,Feltleaf willow,Salix alaxensis var. longistylis
+SAAL2,White willow,Salix alba
+SAAM2,Peachleaf willow,Salix amygdaloides
+SABA3,Barclay's willow,Salix barclayi
+SABE2,Bebb willow,Salix bebbiana
+SABO,Bonpland willow,Salix bonplandiana
+SADE2,Del Norte willow,Salix delnortensis
+SAER,Missouri River willow,Salix eriocephala
+SAEX,Narrowleaf willow,Salix exigua
+SAFR,Crack willow,Salix fragilis
+SAGE2,Geyer willow,Salix geyeriana
+SAGL,Grayleaf willow,Salix glauca
+SAGLV,Grayleaf willow,Salix glauca var.villosa
+SAGO,Goodding's willow,Salix gooddingii
+SAHO,Dune willow,Salix hookeriana
+SALA3,Red willow,Salix laevigata
+SALA6,Arroyo willow,Salix lasiolepis
+SALAB,Bigelow's willow,Salix lasiolepis var. bigelovii
+SALAL2,Arroyo willow,Salix lasiolepis var. lasiolepis
+SALI,Strapleaf willow,Salix ligulifolia
+SALU,Shining willow,Salix lucida
+SALUC,Greenleaf willow,Salix lucida ssp. Caudata
+SALUL,Pacific willow,Salix lucida ssp. Lasiandra
+SALU2,Yellow willow,Salix lutea
+SAMA12,McCalla's willow,Salix maccalliana
+SAME2,Dusky willow,Salix melanopsis
+SAMO2,Park willow,Salix monticola
+SAMY,Blueberry willow,Salix myrtillifolia
+SAPL2,Diamondleaf willow,Salix planifolia
+SAPLP4,Diamondleaf willow,Salix planifolia spp. planifolia
+SAPR3,MacKenzie's willow,Salix prolixa
+SASC,Scouler's willow,Salix scouleriana
+SASE10,Weeping willow,Salix sepulcralis
+SASI2,Sitka willow,Salix sitchensis
+SATA,Yewleaf willow,Salix taxifolia
+SESE3,Redwood,Sequoia sempervirens
+SEGI2,Giant sequoia,Sequoiadendron giganteum
+TAXUS,Yew,Taxus
+TABR2,Pacific yew,Taxus brevifolia
+THUJA,Arborvitae,Thuja
+THPL,Western redcedar,Thuja plicata
+TOCA,California nutmeg,Torreya californica
+TSUGA,Hemlock,Tsuga
+TSHE,Western hemlock,Tsuga heterophylla
+TSME,Mountain hemlock,Tsuga mertensiana
+UMBEL,California laurel,Umbellularia
+UMCA,California laurel,Umbellularia californica
+UMCAC,California laurel,Umbellularia californica var. californica
+UMCAF,California laurel,Umbellularia californica var. fresnensis
+2TREE,Tree,NA
+2TB,"Tree, broadleaf",NA
+2TD,"Tree, deciduous",NA
+2TE,"Tree, evergreen",NA
+2TN,"Tree, needleleaf (coniferous)",NA
