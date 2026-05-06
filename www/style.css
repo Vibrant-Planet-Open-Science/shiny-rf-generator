@@ -1237,3 +1237,91 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
 }
 .callout-text strong { color: var(--vp-ink); font-weight: 600; }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   LEGACY — v0.1 component classes still used by unrebuilt screens.
+   These were migrated out of the inline app_css block in app.R.
+   Retire each rule as its consuming screen gets rebuilt:
+     .card / .subtitle / .navbar / .btn-primary / .btn-outline-secondary
+       → used by render_ecs (page 05), render_weights (page 06),
+         render_download (page 07).
+     .rf-choice → used by render_rftype (page 04). Will retire when the
+         choice cards get the corner radio/checkmark indicator.
+     .status-ok → used in one map card status; retire when that gets
+         rebuilt with the design system status pattern.
+     .app-container → outer wrapper for the whole app; not retiring soon.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.app-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: var(--space-5);
+}
+
+/* ── Legacy card surface ──────────────────────────────────────────────── */
+.card {
+  background: white;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--space-5);
+}
+
+.subtitle {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--vp-ink-mid);
+  margin-top: calc(-1 * var(--space-2));
+  margin-bottom: var(--space-5);
+}
+
+/* ── Legacy nav row at bottom of cards ────────────────────────────────── */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-6);
+}
+
+/* ── Legacy choice card (RF type, etc.) ───────────────────────────────── */
+.rf-choice {
+  position: relative;
+  background: white;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  cursor: pointer;
+  min-height: 10rem;
+  transition: border-color var(--t-fast);
+}
+.rf-choice:hover { border-color: var(--vp-forest-dark); }
+.rf-choice.selected {
+  border: 3px solid var(--vp-forest-dark);
+  padding: calc(var(--space-6) - 2px); /* compensate so card doesn't reflow */
+}
+
+/* ── Legacy buttons (Bootstrap overrides) ─────────────────────────────── */
+.btn.btn-primary {
+  background: var(--vp-forest-dark) !important;
+  border-color: var(--vp-forest-dark) !important;
+  color: white !important;
+}
+.btn.btn-primary:hover {
+  background: var(--vp-forest-mid) !important;
+  border-color: var(--vp-forest-mid) !important;
+}
+.btn.btn-outline-secondary {
+  color: var(--vp-ink-soft) !important;
+  border-color: var(--vp-paper-deep) !important;
+  background: transparent !important;
+}
+
+/* ── Legacy success status text ───────────────────────────────────────── */
+.status-ok {
+  color: var(--vp-forest-dark);
+  margin-top: var(--space-3);
+  font-weight: 500;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LEGACY ENDS
+   ═══════════════════════════════════════════════════════════════════════ */

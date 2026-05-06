@@ -135,53 +135,9 @@ mock_species <- c("Pinus ponderosa (PP)", "Pseudotsuga menziesii (DF)",
 
 
 # =============================================================================
-# Inline CSS
+# All styling lives in www/style.css — see :root tokens and global rules..
 # =============================================================================
-# All visual styling lives here. Edit this string to change the look and feel.
-#
-# Key classes for Alister:
-#   .app-container — outer wrapper, controls max-width and centering
-#   .hdr           — dark green persistent header bar
-#   .crumb         — breadcrumb text (monospace); .done/.active/.todo for states
-#   .details-wrap  — collapsible metadata drawer below header
-#   .card          — white card container for each wizard screen
-#   .subtitle      — muted description text below card h2
-#   .section-label — uppercase sienna label (e.g. "FOREST TYPE", "IMPORTANCE")
-#   .rf-choice     — clickable card for RF type selection (stand vs species)
-#   .navbar        — flex row for Back/Next buttons at bottom of each card
-#   .status-ok     — green success text (e.g. "✓ File loaded — 1,234 stands")
-#   .btn-primary   — dark green filled button
-#   .btn-outline-secondary — outline button with warm border
 
-app_css <- "
-  body { background: #faf5ed; font-family: 'Helvetica Neue', Arial, sans-serif; color: #1e3a28; }
-  .app-container { max-width: 1000px; margin: 0 auto; padding: 20px; }
-  .hdr { background: #1e3a28; color: #faf5ed; padding: 16px 20px; border-radius: 6px; margin-bottom: 12px; }
-  .hdr input[type='text'] { background: #fff; border: 1px solid #4a5c4e; border-radius: 4px; padding: 8px; }
-  .crumb { font-family: 'Courier New', monospace; font-size: 12px; text-align: right; padding-top: 8px; }
-  .crumb .done { color: #c9b88a; }
-  .crumb .active { color: #faf5ed; font-weight: 600; }
-  .crumb .todo { color: #7a8a75; }
-  .details-wrap { background: #fff; border: 1px solid #e0d4b8; border-radius: 6px;
-                  padding: 10px 14px; margin-bottom: 16px; }
-  .details-wrap summary { cursor: pointer; font-weight: 500; color: #4a3c2a; }
-  .card { background: #fff; border: 1px solid #e0d4b8; border-radius: 10px;
-          padding: 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 20px; }
-  .card h2 { font-family: Georgia, serif; color: #1e3a28; margin-top: 0; margin-bottom: 4px; font-size: 26px; }
-  .card .subtitle { color: #7a8a75; margin-bottom: 20px; font-size: 14px; }
-  .section-label { font-family: 'Courier New', monospace; font-size: 11px;
-                   text-transform: uppercase; color: #8b4513; letter-spacing: 0.04em;
-                   margin-top: 16px; margin-bottom: 8px; }
-  .rf-choice { border: 1px solid #e0d4b8; border-radius: 8px; padding: 24px;
-               cursor: pointer; background: #fff; min-height: 160px; transition: all 0.15s; }
-  .rf-choice:hover { border-color: #1e3a28; }
-  .rf-choice.selected { border: 3px solid #1e3a28; padding: 22px; }
-  .navbar { display: flex; justify-content: space-between; margin-top: 30px; }
-  .btn-primary { background: #1e3a28 !important; border-color: #1e3a28 !important; color: white !important; }
-  .btn-primary:hover { background: #2d5a3d !important; border-color: #2d5a3d !important; }
-  .btn-outline-secondary { color: #4a3c2a !important; border-color: #c9b88a !important; background: transparent !important; }
-  .status-ok { color: #1e3a28; margin-top: 10px; font-weight: 500; }
-"
 
 
 # =============================================================================
@@ -206,11 +162,8 @@ ui <- fluidPage(
         "family=JetBrains+Mono:wght@400;500;600&display=swap"
       )
     ),
-    # New design system tokens. Loaded BEFORE the legacy app_css so the inline
-    # string still wins on selectors that overlap (body, .card, etc.) for now —
-    # we'll migrate screens off app_css one phase at a time.
+    # Design system tokens, components, and global typography.
     tags$link(rel = "stylesheet", href = "www/style.css"),
-    tags$style(HTML(app_css)),
     
     # Custom JS handlers
     tags$script(HTML("
