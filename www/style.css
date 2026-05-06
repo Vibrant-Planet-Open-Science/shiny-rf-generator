@@ -42,18 +42,19 @@
 
   /* Type scale — modular minor-third, capped at 2.625rem (this is a tool,
      not an editorial poster). Base 1rem = 16px. */
-  --text-xs:       0.6875rem;  /* 11px — caption metadata only */
-  --text-sm:       0.8125rem;  /* 13px — small body */
-  --text-base:     0.9375rem;  /* 15px — body default */
-  --text-md:       1.0625rem;  /* 17px — lead paragraph */
-  --text-lg:       1.25rem;    /* 20px — H4 */
-  --text-xl:       1.5rem;     /* 24px — H3 */
-  --text-2xl:      1.8125rem;  /* 29px — H2 */
-  --text-3xl:      2.1875rem;  /* 35px — H1 */
-  --text-4xl:      2.625rem;   /* 42px — display max */
-  --text-mono:     0.875rem;   /* 14px — mono structural text */
-  --text-overline: 0.875rem;   /* 14px — section overlines */
-  --text-eyebrow:  0.6875rem;  /* 11px — small mono eyebrows */
+  --text-xs:       max(11px, 0.6875rem);  /* 11px — caption metadata only */
+  --text-sm:       max(13px, 0.8125rem);  /* 13px — small body */
+  --text-base:     max(15px, 0.9375rem);  /* 15px — body default */
+  --text-md:       max(17px, 1.0625rem);  /* 17px — lead paragraph */
+  --text-lg:       max(20px, 1.25rem);    /* 20px — H4 */
+  --text-xl:       max(24px, 1.5rem);     /* 24px — H3 */
+  --text-2xl:      max(29px, 1.8125rem);  /* 29px — H2 */
+  --text-3xl:      max(35px, 2.1875rem);  /* 35px — H1 */
+  --text-4xl:      max(42px, 2.625rem);   /* 42px — display max */
+  --text-mono:     max(14px, 0.875rem);   /* 14px — mono structural text */
+  --text-overline: max(14px, 0.875rem);   /* 14px — section overlines */
+  --text-eyebrow:  max(11px, 0.6875rem);  /* 11px — small mono eyebrows */
+
 
   /* SPACING — 4px base, geometric in rem */
   --space-1:  0.25rem;
@@ -95,6 +96,44 @@
   /* LAYOUT */
   --max-w: 78rem;
 }
+
+/* ── Global typography ──────────────────────────────────────────────────
+   Explicit defaults so every rendered element has a known starting point.
+   Component-level rules can override; everything cascades from here. */
+
+body {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  line-height: 1.55;
+  color: var(--vp-ink);
+  background: var(--vp-paper);
+}
+
+p {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  line-height: 1.55;
+  margin-top: 0;
+  margin-bottom: var(--space-3);
+  color: var(--vp-ink-soft);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.2;
+  margin-top: 0;
+  margin-bottom: var(--space-3);
+  color: var(--vp-ink);
+}
+
+h1 { font-size: var(--text-3xl); font-weight: 700; line-height: 1.15; }
+h2 { font-size: var(--text-2xl); }
+h3 { font-size: var(--text-xl); }
+h4 { font-size: var(--text-lg); }
+h5 { font-size: var(--text-md); }
+h6 { font-size: var(--text-base); }
+
 
 /* ============================================================
    COMPONENT — Top bar (phase 2)
@@ -351,7 +390,6 @@
    conditional visibility is added in a later session.
    ============================================================ */
 .page {
-  max-width: 78rem;
   margin: 0 auto;
   padding: var(--space-6) var(--space-8) var(--space-12);
   width: 100%;
