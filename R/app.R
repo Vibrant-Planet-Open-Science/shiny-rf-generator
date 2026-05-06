@@ -127,11 +127,25 @@ structure_classes <- all_vars_codes |>
 stand_lookup <- readRDS(here::here("data", "unique_stand_data.rds"))
 stand_lookup <- stand_lookup[complete.cases(stand_lookup), ]
 
-# Placeholder species list — shown only if real species data hasn't loaded yet.
-# Replaced with AOI-filtered species from S3 StdStk data when the user
-# navigates to the species screen.
-mock_species <- c("Pinus ponderosa (PP)", "Pseudotsuga menziesii (DF)",
-                  "Pinus albicaulis (WB)", "Populus tremuloides (AS)")
+# Species crosswalk — code → common + scientific name.
+# Built from FVS_SpeciesCrosswalk.xls via scripts/build_species_crosswalk.R.
+# Used to render the species picker on page 04 with friendly labels.
+species_labels <- readr::read_csv(
+  here::here("data", "species_crosswalk.csv"),
+  show_col_types = FALSE
+)
+
+# Lookup helpers — return the friendly label (or fall back to the code
+# itself when no crosswalk row exists for a given species). Both vectorized.
+species_common <- function(code) {
+  m <- match(code, species_labels$code)
+  ifelse(is.na(m), code, species_labels$common_name[m])
+}
+species_scientific <- function(code) {
+  m <- match(code, species_labels$code)
+  out <- species_labels$scientific_name[m]
+  ifelse(is.na(m) | is.na(out) | !nzchar(out), "", out)
+}
 
 
 # =============================================================================
@@ -190,6 +204,31 @@ ui <- fluidPage(
           }, {priority: 'event'});
         }
       });
+
+       // ── Species picker — client-side search filter.
+      // Hides .checkbox rows whose text doesn't match. All checkboxes stay
+      // in the DOM so input$species_picks selections persist across filtering.
+      function filterSpeciesList(term) {
+        var t = (term || '').toLowerCase().trim();
+        document.querySelectorAll('#species_picks .checkbox').forEach(function(row) {
+          var text = row.textContent.toLowerCase();
+          row.style.display = (t === '' || text.indexOf(t) !== -1) ? '' : 'none';
+        });
+      }
+
+      // Pill X click — find the matching checkbox, click it.
+      // .click() fires the native change event, Shiny picks up the new state.
+      function removeSpeciesPick(code) {
+        var cb = document.querySelector('#species_picks input[value=\"' + code + '\"]');
+        if (cb && cb.checked) cb.click();
+      }
+
+      // Clear all — click every checked checkbox in the picker.
+      function clearAllSpeciesPicks() {
+        document.querySelectorAll('#species_picks input[type=checkbox]:checked').forEach(function(cb) {
+          cb.click();
+        });
+      }
     "))
 
 
@@ -446,6 +485,9 @@ server <- function(input, output, session) {
     state$rf_results       <- NULL
     updateTextInput(session, "hvra_name", value = "")
     updateTextInput(session, "hvra_sci",  value = "")
+    # New: clear the species picker state so a fresh AOI starts clean.
+    updateCheckboxGroupInput(session, "species_picks", selected = character())
+    updateTextInput(session, "species_search", value = "")
   })
 
   # RF type card click handler (stand vs species)
@@ -479,24 +521,101 @@ server <- function(input, output, session) {
   # Reveals when state$rf_type == "species". Three sub-states:
   #   - list NULL     → load is in flight (or not yet triggered)
   #   - list empty    → no qualifying species in this AOI
-  #   - list populated → checkbox group of species to pick from
+  #   - list populated → search + selected-pills + checkbox grid
+  #
+  # Source of truth for selections is input$species_picks (the checkbox
+  # group). Pills render from it; pill X and Clear All dispatch JS that
+  # toggles the corresponding checkbox, which fires Shiny's normal change
+  # event back into input$species_picks. No state mirror needed.
   output$species_pane <- renderUI({
     if (!isTRUE(state$rf_type == "species")) return(NULL)
     sp <- state$species_list
     if (is.null(sp)) {
-      return(div(style = "padding:24px 0;color:#7a8a75;font-style:italic;",
-                 "Loading species from S3..."))
+      return(div(class = "species-pane-loading", "Loading species from S3..."))
     }
     if (length(sp) == 0) {
-      return(div(style = "padding:24px 0;color:#7a8a75;font-style:italic;",
-                 "No species found in your AOI."))
+      return(div(class = "species-pane-empty", "No species found in your AOI."))
     }
-    div(style = "padding-top:24px;border-top:1px solid #e0d4b8;margin-top:24px;",
-        h3("Select target species"),
-        p("Choose one or more species present in your AOI.", class = "subtitle"),
-        checkboxGroupInput("species_picks", NULL, choices = sp)
+
+    div(class = "species-picker",
+      # Header + subtitle
+      h3("Select target species"),
+      p(class = "subtitle",
+        "Showing only species documented in your AOI. ",
+        "Search by species code."
+      ),
+
+      # Search input — wrapped in a class so we can style separately from
+      # the global Shiny textInput. onkeyup fires the JS row-filter.
+      div(class = "species-search",
+        tags$input(
+          type = "text",
+          id = "species_search",
+          class = "form-control",
+          placeholder = "Search species \u2014 PSME, ABCO, ...",
+          onkeyup = "filterSpeciesList(this.value);"
+        )
+      ),
+
+      # Selected pills row (server-rendered from input$species_picks)
+      uiOutput("species_pills"),
+
+      # Section header: total available
+      div(class = "species-section-header",
+        div(class = "section-label", "Available species"),
+        tags$span(class = "species-section-count", length(sp))
+      ),
+
+      # Checkbox grid — never filtered server-side. JS hides non-matching
+      # rows by reading textContent (which now includes common + scientific
+      # names + code, so search-by-any-field works for free).
+      div(class = "species-grid",
+        checkboxGroupInput("species_picks", NULL,
+          choiceNames = lapply(sp, function(code) {
+            common <- species_common(code)
+            sci    <- species_scientific(code)
+            tags$span(class = "species-row",
+              tags$span(class = "species-row-name", common),
+              if (nzchar(sci)) tags$em(class = "species-row-sci", sci),
+              tags$span(class = "species-row-code", code)
+            )
+          }),
+          choiceValues = sp,
+          selected = isolate(input$species_picks)
+        )
+      )
     )
   })
+
+  # ── Selected-species pills row (server-rendered from input$species_picks)
+  # Each pill: code text + X button. X click dispatches JS that finds the
+  # matching checkbox in #species_picks and clicks it (which fires Shiny's
+  # change event and removes the code from input$species_picks).
+  output$species_pills <- renderUI({
+    picks <- input$species_picks %||% character()
+    if (length(picks) == 0) return(NULL)
+
+    div(class = "species-pills",
+      lapply(picks, function(code) {
+        tags$span(class = "chip chip-orange chip-removable",
+          tags$span(class = "chip-label", species_common(code)),
+          tags$span(class = "chip-code", code),
+          tags$button(class = "chip-remove",
+            type = "button",
+            onclick = sprintf("removeSpeciesPick('%s');", code),
+            "\u00d7"
+          )
+        )
+      }),
+      tags$button(class = "species-clear-all",
+        type = "button",
+        onclick = "clearAllSpeciesPicks();",
+        "Clear all"
+      )
+    )
+  })
+
+
 
   # ── RF Type page footer (reactive) ────────────────────────────────────
   # Four states per the page 04 brief:
