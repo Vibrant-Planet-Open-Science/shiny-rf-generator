@@ -1300,13 +1300,18 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   border-top: 1px solid var(--border-soft);
 }
 
+.species-picker:first-child {
+  margin-top: 0;
+  padding-top: 0;
+}
+
 .species-picker h3 {
   margin-top: 0;
   margin-bottom: var(--space-2);
 }
 
 .species-search {
-  margin-bottom: var(--space-4);
+  margin-top: var(--space-4);
 }
 
 .species-search input {
@@ -1489,6 +1494,12 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   padding: 0.125rem 0.375rem;
   border-radius: var(--radius-xs);
   white-space: nowrap;
+}
+
+.species-row-unit {
+  color: var(--vp-soft);
+  font-weight: 400;
+  margin-left: 0.25rem;
 }
 
 /* Loading + empty states */

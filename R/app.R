@@ -276,6 +276,38 @@ ui <- fluidPage(
           cb.click();
         });
       }
+
+      // ── EC picker — client-side search filter (mirrors filterSpeciesList).
+      // Hides .checkbox rows whose text doesn't match. Also collapses whole
+      // .species-picker sections when none of their children match. All
+      // checkboxes stay in the DOM so EC selections persist across filtering.
+      function filterEcList(term) {
+        var t = (term || '').toLowerCase().trim();
+        var container = document.getElementById('ecs_sections');
+        if (!container) return;
+        container.querySelectorAll('.species-picker').forEach(function(section) {
+          var anyVisible = false;
+          section.querySelectorAll('.checkbox').forEach(function(row) {
+            var match = (t === '' || row.textContent.toLowerCase().indexOf(t) !== -1);
+            row.style.display = match ? '' : 'none';
+            if (match) anyVisible = true;
+          });
+          section.style.display = anyVisible ? '' : 'none';
+        });
+      }
+
+      // Re-apply the filter whenever Shiny re-renders #ecs_sections (every
+      // checkbox click rebuilds it because the X / Y count in each header
+      // updates). Hook on shiny:value so we attach after the EC screen is
+      // actually present in the DOM.
+      $(document).on('shiny:value', function(e) {
+        if (e.name !== 'ecs_sections_inner') return;
+        // Defer one tick so the new DOM is in place before we re-filter.
+        setTimeout(function() {
+          var input = document.getElementById('ec_search');
+          if (input) filterEcList(input.value);
+        }, 0);
+      });
     "))
 
 
@@ -1199,47 +1231,72 @@ server <- function(input, output, session) {
   # Default ECs (show_default=TRUE in ec_labels) shown first; advanced ECs
   # hidden behind a toggle. EC definitions live in R/ec_labels.R.
   render_ecs <- function() {
-    # Helper: renders one subcategory group of EC checkboxes
-    render_group <- function(df, group_name) {
-      if (nrow(df) == 0) return(NULL)
-      # Input ID matches pattern used by EC_GROUP_IDS and selected_ecs()
-      grp_id <- paste0("ecgrp_", tolower(gsub("[^a-z]", "_", tolower(group_name))))
-      unit_part <- if ("unit" %in% names(df)) {
-        ifelse(nzchar(df$unit), paste0(" (", df$unit, ")"), "")
-      } else rep("", nrow(df))
-      div(style = "margin-bottom:18px;",
-          div(class = "section-label", group_name),
-          checkboxGroupInput(
-            grp_id, NULL,
-            choiceNames  = paste0(df$label, unit_part),
-            choiceValues = df$column
-          )
-      )
-    }
+    div(class = "main-col",
 
-    default_ecs  <- ec_labels |> filter(show_default == TRUE)
-    advanced_ecs <- ec_labels |> filter(show_default == FALSE)
-    default_groups  <- split(default_ecs,  default_ecs$subcategory)
-    advanced_groups <- split(advanced_ecs, advanced_ecs$subcategory)
-
-    div(class = "card",
-        h2("Pick ecosystem components"),
-        p("Select the ECs that matter for this RF. You'll set importance and effect type next.",
-          class = "subtitle"),
-        textInput("ec_search", NULL, placeholder = "\U0001F50D Search ECs (visual only for now)...",
-                  width = "100%"),
-        lapply(names(default_groups), function(g) render_group(default_groups[[g]], g)),
-        tags$hr(),
-        checkboxInput("show_advanced", "Show advanced ECs", value = FALSE),
-        # conditionalPanel uses client-side JS — no server round-trip
-        conditionalPanel(
-          condition = "input.show_advanced == true",
-          lapply(names(advanced_groups), function(g) render_group(advanced_groups[[g]], g))
+      # ── Page header ──────────────────────────────────────────────────────
+      div(class = "page-header",
+        div(class = "page-header-numeral", "05"),
+        div(class = "page-header-overline",
+          tags$span(class = "page-header-step", "Build"),
+          tags$span("· Ecosystem components")
         ),
-        div(class = "navbar",
-            actionButton("btn_back", "\u2190 Back", class = "btn btn-outline-secondary btn-lg"),
-            actionButton("btn_next", "Next \u2192", class = "btn btn-primary btn-lg")
+        h1(tags$strong("Pick"), " ", tags$em("ecosystem components.")),
+        p("Select the ECs that matter for this RF. ",
+          "You'll set importance and effect direction next.")
+      ),
+
+      # ── Teaching block (default open on first visit) ─────────────────────
+      tags$details(class = "teaching-block", open = NA,
+        tags$summary(class = "teaching-summary",
+          tags$span(class = "teaching-eyebrow", "What's an EC?"),
+          tags$span(class = "teaching-headline",
+            "An ecosystem component is a measurable stand attribute that drives your HVRA's habitat."
+          ),
+          tags$span(class = "teaching-chevron")
+        ),
+        div(class = "teaching-content",
+          div(class = "teaching-body",
+            "Pick the ones your HVRA actually responds to — fewer, ",
+            "well-chosen ECs make a sharper response curve than a long ",
+            "list of weakly-related metrics."
+          ),
+          div(class = "teaching-body",
+            "Categories below are organized by signal type: ",
+            tags$span(class = "chip", "canopy"), ", ",
+            tags$span(class = "chip", "fuels"), ", ",
+            tags$span(class = "chip", "stand metrics"), ", ",
+            tags$span(class = "chip", "understory"), ", ",
+            "and ", tags$span(class = "chip", "wildlife habitat"), "."
+          ),
+          div(class = "teaching-footer",
+            tags$a(class = "teaching-deepen", href = "#",
+                   "Read the methods paper →")
+          )
         )
+      ),
+
+      # ── Search field — mirrors the species picker's .species-search markup
+      # (raw <input> wrapped in a styled div, inline onkeyup hook).
+      div(class = "species-search",
+        tags$input(
+          type = "text",
+          id = "ec_search",
+          class = "form-control",
+          placeholder = "Search ECs — canopy, snags, fuels, ...",
+          onkeyup = "filterEcList(this.value);"
+        )
+      ),
+
+      # ── Section list (reactive on input$show_advanced + checkbox state) ──
+      # Outer div has a stable id so the inline JS can find it after each
+      # uiOutput re-render and re-apply the #ec_search filter.
+      div(id = "ecs_sections", uiOutput("ecs_sections_inner")),
+
+      tags$hr(),
+      checkboxInput("show_advanced", "Show advanced ECs", value = FALSE),
+
+      # ── Page footer ──────────────────────────────────────────────────────
+      uiOutput("ecs_page_footer")
     )
   }
 
@@ -1840,6 +1897,44 @@ server <- function(input, output, session) {
   }
 
 
+  # Render one EC subcategory section (Canopy, Fuels, etc.). Mirrors the
+  # filter-section pattern — section header with X / Y count, two-column
+  # checkbox grid — but no removable-pills row (ECs are simple checkbox
+  # picks, not named tags the user reorders). The grp_id derivation here
+  # must match EC_GROUP_IDS so selected_ecs() picks them up.
+  render_ec_section <- function(group_name, df) {
+    if (nrow(df) == 0) return(NULL)
+    grp_id   <- paste0("ecgrp_", tolower(gsub("[^a-z]", "_", tolower(group_name))))
+    selected <- input[[grp_id]] %||% character()
+    n_sel    <- sum(df$column %in% selected)
+
+    unit_part <- ifelse(nzchar(df$unit), paste0(" (", df$unit, ")"), "")
+    choice_names <- lapply(seq_len(nrow(df)), function(i) {
+      tags$span(class = "species-row",
+        tags$span(class = "species-row-text",
+          tags$span(class = "species-row-name", df$label[i]),
+          tags$span(class = "species-row-unit", unit_part[i])
+        )
+      )
+    })
+
+    div(class = "species-picker",
+      div(class = "species-picker-header",
+        h3(group_name),
+        tags$span(class = "species-picker-count",
+                  sprintf("%d / %d", n_sel, nrow(df)))
+      ),
+      div(class = "species-grid",
+        checkboxGroupInput(grp_id, NULL,
+          choiceNames  = choice_names,
+          choiceValues = df$column,
+          selected     = isolate(selected)
+        )
+      )
+    )
+  }
+
+
   # Filtered stands reactive — single source of truth for the post-filter
   # subset of the AOI. Used by the count readout on page 02, the review
   # screen on page 03, and the data-load handler on btn_next.
@@ -1943,6 +2038,63 @@ server <- function(input, output, session) {
       class = "btn btn-continue action-button",
       disabled = if (n_filtered > 0) NULL else "disabled",
       tags$span(class = "action-label", "Continue \u2192")
+    )
+
+    div(class = "page-footer",
+      div(class = "page-footer-status",
+        div(class = "page-footer-status-mark"),
+        tags$span(status_text)
+      ),
+      div(class = "page-footer-actions", back_btn, next_btn)
+    )
+  })
+
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Page 05 (ECs) — section list + reactive page footer
+  # ─────────────────────────────────────────────────────────────────────────
+
+  # Section list reactor — re-renders when input$show_advanced toggles or any
+  # checkbox changes (the count in each section header recomputes). The JS
+  # MutationObserver in www handlers re-applies #ec_search filtering after
+  # each rerender so the search field doesn't get clobbered.
+  output$ecs_sections_inner <- renderUI({
+    show_adv <- isTRUE(input$show_advanced)
+    rows <- if (show_adv) ec_labels else dplyr::filter(ec_labels, show_default)
+
+    # Preserve source-file ordering of subcategories (Canopy → Stand metrics
+    # → Understory → Fuels → Wildlife habitat → Carbon → Growth) instead of
+    # split()'s alphabetical default.
+    groups <- split(rows, factor(rows$subcategory,
+                                 levels = unique(ec_labels$subcategory)))
+    div(
+      lapply(names(groups), function(g) render_ec_section(g, groups[[g]]))
+    )
+  })
+
+  # Reactive footer — disables Continue when 0 ECs picked. Mirrors the
+  # 02 / 04 pattern.
+  output$ecs_page_footer <- renderUI({
+    picks <- selected_ecs()
+    n     <- length(picks)
+
+    status_text <- if (n == 0)
+                     "Pick at least one EC to continue"
+                   else
+                     sprintf("%d EC%s selected · ready to continue",
+                             n, if (n == 1) "" else "s")
+
+    back_btn <- tags$button(
+      id = "btn_back", type = "button",
+      class = "btn btn-ghost action-button",
+      tags$span(class = "action-label", "← Back")
+    )
+
+    next_btn <- tags$button(
+      id = "btn_next", type = "button",
+      class = "btn btn-continue action-button",
+      disabled = if (n > 0) NULL else "disabled",
+      tags$span(class = "action-label", "Continue →")
     )
 
     div(class = "page-footer",
