@@ -891,8 +891,6 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
    COMPONENT — Page footer (phase 4b)
    ============================================================ */
 .page-footer {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
   padding-top: var(--space-8);
   margin-top: var(--space-4);
@@ -920,7 +918,12 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   0%, 100% { box-shadow: 0 0 0 0 rgba(232, 90, 31, 0.4); }
   50%      { box-shadow: 0 0 0 6px rgba(232, 90, 31, 0); }
 }
-.page-footer-actions { display: flex; gap: var(--space-3); }
+.page-footer-actions { 
+  display: flex; 
+  gap: var(--space-3);
+  padding-top: var(--space-8);
+  float: right;
+ }
 
 /* Continue button — overrides Bootstrap btn defaults to match design */
 .btn.btn-continue {
