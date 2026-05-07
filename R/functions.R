@@ -332,10 +332,11 @@ compute_de_rf <- function(df, ec_columns, fire_base_year = 2035) {
         rf_value  = (.data[[ec]] / metric_t0) - (.data[[base_col]] / base_t0),
         rf_value  = dplyr::if_else(rf_value < -1, -1, rf_value),
         rf_value  = dplyr::if_else(rf_value >  1,  1, rf_value),
-        rf_value  = round(rf_value, 4)
+        rf_value  = round(rf_value, 4),
+        raw_value = .data[[ec]]
       ) |>
       dplyr::ungroup() |>
-      dplyr::select(MgmtID, StandID, Year, rel.time, rf_value) |>
+      dplyr::select(MgmtID, StandID, Year, rel.time, rf_value, raw_value) |>
       dplyr::mutate(EC = ec)
 
     rf_long <- c(rf_long, list(ec_rf))
@@ -380,11 +381,13 @@ compute_weighted_de_rf <- function(de_result, ec_config) {
       ec_min <- ec_config$Min[i]
       ec_max <- ec_config$Max[i]
       ec_data <- ec_data |>
-        dplyr::mutate(rf_value = dplyr::if_else(
-          !is.na(rf_value), # Range just flips sign for out-of-range
-          dplyr::if_else(abs(rf_value) <= 1, rf_value, -abs(rf_value)),
-          rf_value
-        ))
+        dplyr::mutate(
+          in_range = !is.na(raw_value) &
+            raw_value >= ec_min & raw_value <= ec_max,
+          rf_value = dplyr::if_else(in_range,
+                                     abs(rf_value), -abs(rf_value))
+        ) |>
+        dplyr::select(-in_range)
     }
 
     ec_data |> dplyr::mutate(

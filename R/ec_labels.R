@@ -16,17 +16,17 @@ ec_labels <- tibble::tribble(
   "Total_Cover",              "Total cover",                 "Canopy",         "% cover",      TRUE,
   "CCF",                      "Crown competition factor",    "Canopy",         "",             FALSE,
 
-  # ── Tree size / structure ────────────────────────────────────────────────────
-  "QMD",                      "Quadratic mean diameter",     "Tree size",      "cm",           TRUE,
-  "BA",                       "Basal area",                  "Tree size",      "m²/ha",        TRUE,
-  "Tpa",                      "Trees per acre",              "Tree size",      "trees/acre",   TRUE,
-  "TopHt",                    "Top height",                  "Tree size",      "ft",           TRUE,
-  "SDI",                      "Stand density index",         "Tree size",      "",             FALSE,
-  "MCuFt",                    "Merchantable cubic feet",     "Tree size",      "ft³",          FALSE,
+  # ── Stand metrics ─────────────────────────────────────────────────────────────
+  "QMD",                      "Quadratic mean diameter",     "Stand metrics",      "cm",           TRUE,
+  "BA",                       "Basal area",                  "Stand metrics",      "m²/ha",        TRUE,
+  "Tpa",                      "Trees per acre",              "Stand metrics",      "trees/acre",   TRUE,
+  "TopHt",                    "Top height",                  "Stand metrics",      "ft",           TRUE,
+  "SDI",                      "Stand density index",         "Stand metrics",      "",             FALSE,
+  "MCuFt",                    "Merchantable cubic feet",     "Stand metrics",      "ft³",          FALSE,
 
   # ── Understory ───────────────────────────────────────────────────────────────
-  "Surface_Shrub",            "Surface shrub cover",         "Understory",     "% cover",      TRUE,
-  "Surface_Herb",             "Herbaceous cover",            "Understory",     "% cover",      TRUE,
+  "Surface_Shrub",            "Surface shrub cover",         "Understory",     "tons/acre",    TRUE,
+  "Surface_Herb",             "Herbaceous cover",            "Understory",     "tons/acre",    TRUE,
 
   # ── Fuels ────────────────────────────────────────────────────────────────────
   "Forest_Down_Dead_Wood",    "Down dead wood",              "Fuels",          "tons/acre",    TRUE,
@@ -96,9 +96,9 @@ s3_read_rds <- function(object) {
   aws.s3::s3readRDS(
     object = object,
     bucket = S3_BUCKET,
-    region = S3_REGION,
-    key    = "",
-    secret = ""
+    region = S3_REGION#,
+    #key    = "",
+    #secret = ""
   )
 }
 
@@ -106,8 +106,8 @@ s3_list_bucket <- function(prefix) {
   aws.s3::get_bucket(
     bucket = S3_BUCKET,
     prefix = prefix,
-    region = S3_REGION,
-    key    = "",
-    secret = ""
+    region = S3_REGION#,
+    #key    = "",
+    #secret = ""
   )
 }

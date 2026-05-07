@@ -31,6 +31,7 @@
 
 source(here::here("R", "functions.R"))
 source(here::here("R", "ec_labels.R"))
+source(here::here("R", "ec_tooltips.R"))
 
 library(shiny)
 library(bslib)
@@ -64,6 +65,10 @@ SCREENS <- c("aoi", "filters", "review", "rftype", "ecs", "weights", "download")
 STEP_LABELS <- c(aoi="AOI", filters="Filters", review="Review", rftype="RF Type",
                  ecs="ECs", weights="Weights", download="Download")
 BREADCRUMB_ORDER <- c("aoi", "filters", "review", "rftype", "ecs", "weights", "download")
+
+# Maximum relative year shown in plots and the on-screen table.
+# Downloads still include the full simulation horizon.
+MAX_DISPLAY_YEAR <- 20
 
 # Wizard section grouping (v0.2 breadcrumb). Three sections name the shape
 # of the work: DEFINE (where + what), BUILD (the curve), EXPORT (the result).
@@ -887,11 +892,14 @@ server <- function(input, output, session) {
               div(class = "upload-zone-prompt",
                 tags$strong("Drop your boundary file here"),
                 " or click below to browse."),
-              div(class = "upload-zone-formats", ".gpkg \u00b7 .tif"),
-              fileInput("aoi_file", label = NULL,
-                        accept = c(".gpkg", ".tif"),
-                        buttonLabel = "Choose file",
-                        placeholder = "No file selected"),
+              div(class = "upload-zone-formats", ".gpkg \u00b7 .tif \u00b7 .zip (zipped shapefile) \u00b7 .shp + companions"),
+              fileInput("aoi_file", "Area of interest",
+                      accept = c(".gpkg", ".tif", ".zip", ".shp", ".shx", ".dbf", ".prj"),
+                      multiple = TRUE,
+                      width = "100%",
+                      buttonLabel = "Choose file",
+                      placeholder = "No file selected"),
+              helpText("Upload a .gpkg, .tif, zipped shapefile (.zip), or .shp with companion .shx, .dbf, .prj files."),
               uiOutput("aoi_file_status")
             )
           )
@@ -1184,7 +1192,13 @@ server <- function(input, output, session) {
         div(style = "border:1px solid #e0d4b8;border-radius:8px;padding:14px 18px;margin-bottom:10px;background:#fff;",
             fluidRow(
               column(4,
-                     tags$strong(lbl),
+                     bslib::tooltip(
+                       trigger = tags$span(
+                         tags$strong(lbl),
+                         tags$i(class = "bi bi-info-circle ms-1", style = "opacity: 0.6;")
+                       ),
+                       ec_tooltip(col)
+                     ),
                      # Subcategory badge
                      tags$span(style = "display:inline-block;background:#e8dcc8;color:#4a3c2a;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:8px;", cat)
               ),
@@ -1257,8 +1271,15 @@ server <- function(input, output, session) {
                                    )
                                  ),
                                  tags$hr(),
-                                 div(class = "section-label", "Full results table"),
-                                 DT::dataTableOutput("rf_preview_table")
+                                 tags$details(class = "details-wrap",
+                                   tags$summary("RF table"),
+                                   div(style = "padding-top:12px;",
+                                       selectInput("rf_year_filter", label = "View year:",
+                                                   choices = NULL, selected = "All",
+                                                   width = "150px"),
+                                       DT::dataTableOutput("rf_preview_table")
+                                   )
+                                 )
                              )
                     ),
                     # -- EC configuration tab --
@@ -1450,6 +1471,43 @@ server <- function(input, output, session) {
       )
   })
 
+  # ── AOI file reader ─────────────────────────────────────────────────
+  # Handles .zip (zipped shapefile) and .shp + companion files.
+  # Returns an sf object, or NULL if the file is .gpkg/.tif (legacy path).
+  read_aoi <- function(file_df) {
+    exts <- tolower(tools::file_ext(file_df$name))
+
+    # Zipped shapefile
+    if ("zip" %in% exts) {
+      out_dir <- tempfile("aoi_")
+      dir.create(out_dir)
+      utils::unzip(file_df$datapath[exts == "zip"][1], exdir = out_dir)
+      shp <- list.files(out_dir, pattern = "\\.shp$", full.names = TRUE, recursive = TRUE)
+      if (length(shp) == 0) stop("No .shp file found inside the uploaded zip.")
+      return(sf::st_read(shp[1], quiet = TRUE))
+    }
+
+    # Raw .shp + companion files
+    if ("shp" %in% exts) {
+      required <- c("shp", "shx", "dbf")
+      missing  <- setdiff(required, exts)
+      if (length(missing) > 0) {
+        stop(paste("Missing companion files:", paste0(".", missing, collapse = ", ")))
+      }
+      if (!"prj" %in% exts) warning("No .prj uploaded \u2014 CRS will be undefined until reprojected.")
+      stage <- tempfile("aoi_")
+      dir.create(stage)
+      file.copy(file_df$datapath, file.path(stage, file_df$name))
+      shp <- file.path(stage, file_df$name[exts == "shp"][1])
+      return(sf::st_read(shp, quiet = TRUE))
+    }
+
+    # GeoPackage or TIFF — signal to use legacy path
+    if (any(exts %in% c("gpkg", "tif"))) return(NULL)
+
+    stop("Unsupported file type. Upload .gpkg, .tif, .zip, or .shp + companion files.")
+  }
+
 
   # Map selection callout — absolute-positioned overlay on the map (lives
   # inside .map-canvas in render_aoi). Nothing rendered in empty state so
@@ -1537,16 +1595,33 @@ server <- function(input, output, session) {
 
 
   # ── File upload handler ───────────────────────────────────────────────
-  # Calls get_tm_ids() from functions.R to process uploaded .gpkg/.tif.
+  # Handles .gpkg, .tif (via get_tm_ids), and .zip/.shp (via read_aoi).
   observeEvent(input$aoi_file, {
     req(input$aoi_file)
     tryCatch({
       withProgress(message = "Processing uploaded AOI...", {
-        tm_ids <- get_tm_ids(
-          aoi_path   = input$aoi_file$datapath,
-          filetype   = tools::file_ext(input$aoi_file$name),
-          unique_ids = stand_lookup
-        )
+        file_df <- input$aoi_file
+        exts <- tolower(tools::file_ext(file_df$name))
+
+        if (any(exts %in% c("zip", "shp"))) {
+          # Shapefile path: read AOI geometry, write to temp .gpkg, then run pipeline
+          aoi_sf <- read_aoi(file_df)
+          tmp_gpkg <- tempfile(fileext = ".gpkg")
+          sf::st_write(aoi_sf, tmp_gpkg, quiet = TRUE)
+          tm_ids <- get_tm_ids(
+            aoi_path   = tmp_gpkg,
+            filetype   = "gpkg",
+            unique_ids = stand_lookup
+          )
+        } else {
+          # Legacy .gpkg / .tif path
+          tm_ids <- get_tm_ids(
+            aoi_path   = file_df$datapath[1],
+            filetype   = tools::file_ext(file_df$name[1]),
+            unique_ids = stand_lookup
+          )
+        }
+
         state$freq_table <- tm_ids
         state$aoi_stands <- nrow(tm_ids)
         state$variant    <- unique(tm_ids$Variant)[1]
@@ -1941,17 +2016,18 @@ server <- function(input, output, session) {
   # =========================================================================
 
   # ── Plot data reactive ─────────────────────────────────────────────────
-  # Filters rf_results to rel.time >= 0 (no pre-fire years) and rounds values.
-  # Both the bar plot and time series read from this.
+  # Filters rf_results to 0 <= rel.time <= MAX_DISPLAY_YEAR and rounds values.
+  # Both the bar plot, time series, and on-screen table read from this.
+  # Download handlers use state$rf_results directly (full horizon).
   rf_plot_data <- reactive({
     res <- state$rf_results
     if (is.null(res)) return(NULL)
     list(
       combined = res$combined |>
-        dplyr::filter(rel.time >= 0) |>
+        dplyr::filter(rel.time >= 0, rel.time <= MAX_DISPLAY_YEAR) |>
         dplyr::mutate(median_combined_rf = round(median_combined_rf, 2)),
       per_ec = res$per_ec |>
-        dplyr::filter(rel.time >= 0) |>
+        dplyr::filter(rel.time >= 0, rel.time <= MAX_DISPLAY_YEAR) |>
         dplyr::mutate(median_rf = round(median_rf, 2))
     )
   })
@@ -2029,23 +2105,49 @@ server <- function(input, output, session) {
 
   # ── Full results table ─────────────────────────────────────────────────
   # Wide format: rows = MgmtID x rel.time, columns = per-EC RF + Combined.
-  output$rf_preview_table <- DT::renderDataTable({
-    res <- state$rf_results
-    if (is.null(res)) return(data.frame(Message = "No RF results yet"))
-    wide <- res$per_ec |>
-      dplyr::filter(rel.time >= 0) |>
-      dplyr::mutate(median_rf = round(median_rf, 2)) |>
+  # Capped at MAX_DISPLAY_YEAR via rf_plot_data(); downloads keep all years.
+
+  # Build the wide table from rf_plot_data (already capped at MAX_DISPLAY_YEAR)
+  rf_table_wide <- reactive({
+    d <- rf_plot_data()
+    if (is.null(d)) return(NULL)
+    wide <- d$per_ec |>
       tidyr::pivot_wider(names_from = EC, values_from = median_rf)
     wide |>
       dplyr::left_join(
-        res$combined |>
-          dplyr::filter(rel.time >= 0) |>
-          dplyr::mutate(Combined = round(median_combined_rf, 2)) |>
+        d$combined |>
+          dplyr::mutate(Combined = median_combined_rf) |>
           dplyr::select(MgmtID, rel.time, Combined),
         by = c("MgmtID", "rel.time")
       ) |>
       dplyr::arrange(MgmtID, rel.time)
-  }, options = list(dom = 'frtip', pageLength = 200, scrollX = TRUE), rownames = FALSE)
+  })
+
+  # Populate the year dropdown from available display years
+  observe({
+    tbl <- rf_table_wide()
+    if (is.null(tbl)) return()
+    yrs <- sort(unique(tbl$rel.time))
+    updateSelectInput(session, "rf_year_filter",
+                      choices  = c("All", yrs),
+                      selected = "All")
+  })
+
+  # Apply year filter to the table
+  filtered_rf_tbl <- reactive({
+    tbl <- rf_table_wide()
+    if (is.null(tbl)) return(data.frame(Message = "No RF results yet"))
+    yr <- input$rf_year_filter
+    if (is.null(yr) || yr == "All") return(tbl)
+    tbl |> dplyr::filter(rel.time == as.numeric(yr))
+  })
+
+  output$rf_preview_table <- DT::renderDataTable(
+    filtered_rf_tbl(),
+    options = list(dom = "tip", searching = FALSE, paging = TRUE,
+                   pageLength = 25, scrollX = TRUE),
+    rownames = FALSE
+  )
 
   # ── EC config table (download screen) ──────────────────────────────────
   output$ec_config_table <- DT::renderDataTable({
