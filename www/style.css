@@ -618,7 +618,9 @@ h6 { font-size: var(--text-base); }
   position: relative;
 }
 .teaching-summary {
+  position: relative;
   padding: var(--space-4) var(--space-5);
+  padding-right: var(--space-10);   /* room for the corner chevron */
   cursor: pointer;
   list-style: none;
   user-select: none;
@@ -633,10 +635,10 @@ h6 { font-size: var(--text-base); }
   letter-spacing: 0.16em;
   text-transform: uppercase;
   font-weight: 500;
-  display: flex;
+  display: inline-flex;            /* shrinks to content width */
   align-items: center;
   gap: var(--space-2);
-  flex-shrink: 0;
+  margin-bottom: var(--space-2);   /* space below before the headline */
 }
 .teaching-eyebrow::before {
   content: '';
@@ -647,13 +649,16 @@ h6 { font-size: var(--text-base); }
   background-image: radial-gradient(circle, var(--vp-orange) 30%, transparent 32%);
 }
 .teaching-headline {
+  display: block;
   font-size: var(--text-base);
   font-weight: 500;
   color: var(--vp-ink-soft);
-  flex: 1;
   line-height: 1.4;
 }
 .teaching-chevron {
+  position: absolute;
+  right: var(--space-5);
+  bottom: var(--space-4);
   width: 1rem; height: 1rem;
   border-radius: 50%;
   border: 1px solid var(--vp-orange-deep);
@@ -664,7 +669,6 @@ h6 { font-size: var(--text-base); }
   font-size: 0.5rem;
   font-weight: 600;
   transition: transform var(--t-mid);
-  flex-shrink: 0;
 }
 .teaching-chevron::before { content: '▼'; line-height: 1; }
 details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180deg); }
@@ -1389,14 +1393,16 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
 
 /* ── Species picker checkbox grid + rich rows ────────────────────────── */
 
-/* Force the Shiny container to fill its parent (.species-grid). Without
-   this it sizes to content and the 2-col grid never gets the room it needs. */
-#species_picks {
+/* Force the Shiny checkbox-group container to fill its parent (.species-grid).
+   Without this it sizes to content and the 2-col grid never gets the room it
+   needs. Targets ALL pickers (species, forest type, structure class) by
+   landing on the inner shiny-input-checkboxgroup wrapper. */
+.species-grid > .shiny-input-checkboxgroup {
   width: 100%;
 }
 
 /* Two-column grid layout. Collapses to one column under ~480px. */
-#species_picks .shiny-options-group {
+.species-grid .shiny-options-group {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-1) var(--space-4);
@@ -1404,7 +1410,7 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
 }
 
 @media (max-width: 480px) {
-  #species_picks .shiny-options-group {
+  .species-grid .shiny-options-group {
     grid-template-columns: 1fr;
   }
 }

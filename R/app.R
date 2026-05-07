@@ -140,6 +140,28 @@ structure_classes <- all_vars_codes |>
   dplyr::pull(readable_values) |>
   trimws()
 
+# Lookups: readable name → numeric code (used to render the code badge in
+# the filter pickers on page 02). Built from the same all_vars_codes table.
+ft_code_lookup <- all_vars_codes |>
+  dplyr::filter(variable == "ForTyp") |>
+  dplyr::mutate(readable_values = trimws(readable_values)) |>
+  dplyr::select(name = readable_values, code = value)
+
+sc_code_lookup <- all_vars_codes |>
+  dplyr::filter(variable == "Structure_Class") |>
+  dplyr::mutate(readable_values = trimws(readable_values)) |>
+  dplyr::select(name = readable_values, code = value)
+
+# Helpers — vectorized; fall back to "" when no match.
+ft_code_for <- function(name) {
+  m <- match(name, ft_code_lookup$name)
+  ifelse(is.na(m), "", as.character(ft_code_lookup$code[m]))
+}
+sc_code_for <- function(name) {
+  m <- match(name, sc_code_lookup$name)
+  ifelse(is.na(m), "", as.character(sc_code_lookup$code[m]))
+}
+
 # Stand metadata lookup — maps StandID+Variant → Forest_Type, Structure_Class, etc.
 # Passed to get_tm_ids() which joins it with TreeMap IDs from the AOI.
 stand_lookup <- readRDS(here::here("data", "unique_stand_data.rds"))
@@ -212,17 +234,23 @@ ui <- fluidPage(
         }
       });
 
-      // Chip toggle — pushes {group, value} to a single shared Shiny input.
-      // priority:'event' ensures consecutive clicks on the same chip both fire
-      // (Shiny otherwise dedupes identical values).
-      document.addEventListener('click', function(e) {
-        if (e.target.matches('.chip-toggle')) {
-          Shiny.setInputValue('toggle_chip', {
-            group: e.target.dataset.chipGroup,
-            value: e.target.dataset.chipValue
-          }, {priority: 'event'});
+      // ── Generic chip-pill remover/clearer — works for any checkboxGroupInput.
+      // Used by the filter pickers on page 02. Iterates instead of using a
+      // CSS attribute selector because filter values can contain quotes,
+      // slashes, spaces (e.g., 'Eastern white pine / Eastern hemlock').
+      function removeChipPick(inputId, value) {
+        var inputs = document.querySelectorAll('#' + inputId + ' input[type=checkbox]');
+        for (var i = 0; i < inputs.length; i++) {
+          if (inputs[i].value === value && inputs[i].checked) {
+            inputs[i].click();
+            return;
+          }
         }
-      });
+      }
+      function clearAllChipPicks(inputId) {
+        document.querySelectorAll('#' + inputId + ' input[type=checkbox]:checked')
+                .forEach(function(cb) { cb.click(); });
+      }
 
        // ── Species picker — client-side search filter.
       // Hides .checkbox rows whose text doesn't match. All checkboxes stay
@@ -389,6 +417,8 @@ server <- function(input, output, session) {
     species_list     = NULL,        # Character vector of species in AOI (loaded from S3)
     filtered_data    = NULL,        # Filtered StandLevel data frame (loaded from S3)
     rf_results       = NULL         # Output of compute_weighted_de_rf(): list(per_ec, combined)
+    # Filter selections live in input$ft_picks / input$sc_picks (canonical),
+    # not in state. Empty selection = no filter active.
   )
 
   # ── Selected ECs reactive ─────────────────────────────────────────────────
@@ -420,10 +450,9 @@ server <- function(input, output, session) {
       tryCatch({
         withProgress(message = "Loading stand data (this may take a minute)...", {
           stand_raw <- load_stand_data(state$variant)
-          # Apply chip-driven filters via the filtered_stands() reactive.
-          # No more input$ft_filter / input$sc_filter — page 02 writes to
-          # state$selected_forest_types / state$selected_structure_classes
-          # which filtered_stands() reads from.
+          # Apply page-02 filters via the filtered_stands() reactive.
+          # Reads input$ft_picks / input$sc_picks (canonical state for the
+          # checkbox-picker UI). Empty selection = no filter on that dim.
           ft <- filtered_stands() %||% state$freq_table
           state$filtered_data <- get_filtered_stand_data(stand_raw, ft)
         })
@@ -522,9 +551,11 @@ server <- function(input, output, session) {
     state$rf_results       <- NULL
     updateTextInput(session, "hvra_name", value = "")
     updateTextInput(session, "hvra_sci",  value = "")
-    # New: clear the species picker state so a fresh AOI starts clean.
+    # Clear picker inputs so a fresh AOI starts with no selections.
     updateCheckboxGroupInput(session, "species_picks", selected = character())
     updateTextInput(session, "species_search", value = "")
+    updateCheckboxGroupInput(session, "ft_picks", selected = character())
+    updateCheckboxGroupInput(session, "sc_picks", selected = character())
   })
 
   # RF type card click handler (stand vs species)
@@ -1699,66 +1730,18 @@ server <- function(input, output, session) {
   # Page 02 (Filters) — chip toggles, state init, filtered-stands reactive
   # ─────────────────────────────────────────────────────────────────────────
 
-  # Initialize filter state from AOI freq_table whenever it changes.
-  # On AOI selection: all forest types and structure classes start selected
-  # (the "skip filters" default). On AOI clear: state resets to NULL.
-  # NOTE: changing the AOI wipes any filter selections the user made — this
-  # is a known interim behavior; smarter merging is a future polish.
+  # When the AOI changes, clear any filter picks. The picker UI rebuilds
+  # against the new AOI's available types/classes; carrying stale picks
+  # forward would leave phantom selections that aren't rendered as rows.
   observeEvent(state$freq_table, {
-    ft <- state$freq_table
-    if (is.null(ft)) {
-      state$selected_forest_types     <- NULL
-      state$selected_structure_classes <- NULL
-      return()
-    }
-    if ("Forest_Type" %in% names(ft)) {
-      state$selected_forest_types <- sort(unique(trimws(ft$Forest_Type)))
-    }
-    if ("Structure_Class_Description" %in% names(ft)) {
-      state$selected_structure_classes <-
-        sort(unique(trimws(ft$Structure_Class_Description)))
-    }
+    updateCheckboxGroupInput(session, "ft_picks", selected = character())
+    updateCheckboxGroupInput(session, "sc_picks", selected = character())
   }, ignoreNULL = FALSE)
 
-  # Chip toggle handler — single input shared by all chips on the page.
-  # JS pushes {group: "ft"|"sc", value: <chip value>} via Shiny.setInputValue
-  # with priority:"event" so consecutive clicks on the same chip both fire.
-  observeEvent(input$toggle_chip, {
-    grp <- input$toggle_chip$group
-    val <- input$toggle_chip$value
-    if (grp == "ft") {
-      cur <- state$selected_forest_types %||% character()
-      state$selected_forest_types <-
-        if (val %in% cur) setdiff(cur, val) else c(cur, val)
-    } else if (grp == "sc") {
-      cur <- state$selected_structure_classes %||% character()
-      state$selected_structure_classes <-
-        if (val %in% cur) setdiff(cur, val) else c(cur, val)
-    }
-  })
-
-  # Reset filters back to all-selected (used by both the empty-state recovery
-  # button and the Skip filters affordance in the page footer).
+  # Empty-state recovery button (clears both filters back to default = empty).
   observeEvent(input$btn_filters_reset, {
-    ft <- state$freq_table
-    if (is.null(ft)) return()
-    if ("Forest_Type" %in% names(ft))
-      state$selected_forest_types <- sort(unique(trimws(ft$Forest_Type)))
-    if ("Structure_Class_Description" %in% names(ft))
-      state$selected_structure_classes <-
-        sort(unique(trimws(ft$Structure_Class_Description)))
-  })
-
-  # Skip filters → reset, then advance to review screen.
-  observeEvent(input$btn_filters_skip, {
-    ft <- state$freq_table
-    if (is.null(ft)) return()
-    if ("Forest_Type" %in% names(ft))
-      state$selected_forest_types <- sort(unique(trimws(ft$Forest_Type)))
-    if ("Structure_Class_Description" %in% names(ft))
-      state$selected_structure_classes <-
-        sort(unique(trimws(ft$Structure_Class_Description)))
-    nav_to("review")
+    updateCheckboxGroupInput(session, "ft_picks", selected = character())
+    updateCheckboxGroupInput(session, "sc_picks", selected = character())
   })
 
     # Total available counts (denominator for "7 of 23 selected" readouts).
@@ -1780,33 +1763,79 @@ server <- function(input, output, session) {
     total_stands <- nrow(state$freq_table %||% data.frame())
     p("Pick the forest types and structure classes where ",
       tags$strong(species_label),
-      " is found. The defaults \u2014 leaving everything selected \u2014 ",
-      "include all ",
+      " is found. Leave blank to include all ",
       tags$strong(format(total_stands, big.mark = ",")),
       " stands in your AOI.")
   })
 
-  # Helper: render one chip section (label + count + chip grid).
-  # Used by both the forest type and structure class outputs below.
-  render_chip_section <- function(label, group_key, available, selected) {
-    chips <- lapply(available, function(v) {
-      cls <- paste("chip chip-toggle", if (v %in% selected) "chip-orange" else "")
-      tags$button(
-        class = cls,
-        `data-chip-group` = group_key,
-        `data-chip-value` = v,
-        v
+  # Render one filter section (forest type or structure class).
+  # Mirrors the species picker on page 04: section header with X-of-Y count,
+  # subtitle, removable selected pills, two-column checkbox grid with name +
+  # numeric code badge per row.
+  #
+  # `picker_id` is the Shiny input id (e.g., "ft_picks"). `code_for` is a
+  # vectorized lookup function (ft_code_for / sc_code_for).
+  render_filter_section <- function(label, subtitle, picker_id, available, code_for) {
+    selected <- input[[picker_id]] %||% character()
+
+    choice_names <- lapply(available, function(name) {
+      code <- code_for(name)
+      tags$span(class = "species-row",
+        tags$span(class = "species-row-text",
+          tags$span(class = "species-row-name", name)
+        ),
+        if (nzchar(code)) tags$span(class = "species-row-code", code)
       )
     })
-    div(
-      div(class = "section-controls",
-        div(class = "section-controls-label", label),
-        div(class = "section-controls-count",
-          tags$strong(length(selected)), " of ", tags$strong(length(available)),
-          " selected"
+
+    div(class = "species-picker",
+      div(class = "species-picker-header",
+        h3(label),
+        tags$span(class = "species-picker-count",
+          sprintf("%d of %d selected", length(selected), length(available))
         )
       ),
-      div(class = "chip-grid", chips)
+      p(class = "subtitle", subtitle),
+
+      uiOutput(paste0(picker_id, "_pills")),
+
+      div(class = "species-grid",
+        checkboxGroupInput(picker_id, NULL,
+          choiceNames  = choice_names,
+          choiceValues = available,
+          selected     = isolate(selected)
+        )
+      )
+    )
+  }
+
+  # Render the selected-pills row for a filter picker. Returns NULL when
+  # nothing is picked so the strip just isn't there.
+  render_filter_pills <- function(picker_id, code_for) {
+    picks <- input[[picker_id]] %||% character()
+    if (length(picks) == 0) return(NULL)
+
+    div(class = "species-pills",
+      lapply(picks, function(name) {
+        code <- code_for(name)
+        # JSON-encode the value so quotes/slashes/spaces in names don't
+        # break the inline JS string (e.g., "Eastern white pine / Eastern hemlock").
+        value_js <- jsonlite::toJSON(name, auto_unbox = TRUE)
+        tags$span(class = "chip chip-orange chip-removable",
+          tags$span(class = "chip-label", name),
+          if (nzchar(code)) tags$span(class = "chip-code", code),
+          tags$button(class = "chip-remove",
+            type = "button",
+            onclick = sprintf("removeChipPick('%s', %s);", picker_id, value_js),
+            "×"
+          )
+        )
+      }),
+      tags$button(class = "species-clear-all",
+        type = "button",
+        onclick = sprintf("clearAllChipPicks('%s');", picker_id),
+        "Clear all"
+      )
     )
   }
 
@@ -1815,25 +1844,20 @@ server <- function(input, output, session) {
   # subset of the AOI. Used by the count readout on page 02, the review
   # screen on page 03, and the data-load handler on btn_next.
   #
-  # Filter is "active" when the user's selection is NOT the full available
-  # set. Three cases:
-  #   - all chips selected:    no filter, NAs preserved, count = full
-  #   - partial selection:     filter applied, NAs dropped, count = subset
-  #   - zero chips selected:   filter applied to empty set → 0 stands
-  #                            (triggers the empty-state recovery box)
+  # Filter semantics: each input$*_picks vector lists the items the user
+  # picked to INCLUDE. Empty selection = no filter on that dimension =
+  # all stands pass through. (Restored from the pre-chip-UI behavior.)
   filtered_stands <- reactive({
     ft <- state$freq_table
     if (is.null(ft)) return(NULL)
 
-    sel_ft <- state$selected_forest_types     %||% character()
-    sel_sc <- state$selected_structure_classes %||% character()
-    avail_ft <- available_forest_types()
-    avail_sc <- available_structure_classes()
+    sel_ft <- input$ft_picks %||% character()
+    sel_sc <- input$sc_picks %||% character()
 
-    if ("Forest_Type" %in% names(ft) && length(sel_ft) < length(avail_ft)) {
+    if (length(sel_ft) > 0 && "Forest_Type" %in% names(ft)) {
       ft <- ft |> dplyr::filter(trimws(Forest_Type) %in% sel_ft)
     }
-    if ("Structure_Class_Description" %in% names(ft) && length(sel_sc) < length(avail_sc)) {
+    if (length(sel_sc) > 0 && "Structure_Class_Description" %in% names(ft)) {
       ft <- ft |> dplyr::filter(trimws(Structure_Class_Description) %in% sel_sc)
     }
     ft
@@ -1841,22 +1865,27 @@ server <- function(input, output, session) {
 
 
   output$filters_ft_section <- renderUI({
-    render_chip_section(
+    render_filter_section(
       label     = "Forest type",
-      group_key = "ft",
+      subtitle  = "Stands matching any selected forest type are included. Pick none to include all.",
+      picker_id = "ft_picks",
       available = available_forest_types(),
-      selected  = state$selected_forest_types %||% character()
+      code_for  = ft_code_for
     )
   })
 
   output$filters_sc_section <- renderUI({
-    render_chip_section(
+    render_filter_section(
       label     = "Structure class",
-      group_key = "sc",
+      subtitle  = "Stands matching any selected structure class are included. Pick none to include all.",
+      picker_id = "sc_picks",
       available = available_structure_classes(),
-      selected  = state$selected_structure_classes %||% character()
+      code_for  = sc_code_for
     )
   })
+
+  output$ft_picks_pills <- renderUI({ render_filter_pills("ft_picks", ft_code_for) })
+  output$sc_picks_pills <- renderUI({ render_filter_pills("sc_picks", sc_code_for) })
 
   # Count readout — stat block (count > 0) or empty-state recovery (count == 0).
   output$filters_count_readout <- renderUI({
@@ -1885,15 +1914,23 @@ server <- function(input, output, session) {
     }
   })
 
-  # Page footer — status copy + Continue + Skip filters affordance.
+  # Page footer — status copy + Continue. With the new include-only filter
+  # semantics, "skipping filters" is the same as not picking anything, so
+  # the explicit Skip-filters link is gone.
   output$filters_page_footer <- renderUI({
-    n_filtered <- nrow(filtered_stands() %||% data.frame())
-    n_total    <- nrow(state$freq_table %||% data.frame())
-    all_selected <- (n_filtered == n_total) && n_total > 0
+    n_filtered  <- nrow(filtered_stands() %||% data.frame())
+    n_total     <- nrow(state$freq_table %||% data.frame())
+    any_picked  <- length(input$ft_picks %||% character()) +
+                   length(input$sc_picks %||% character()) > 0
 
-    status_text <- if (n_filtered == 0)         paste0("0 stands match \u00b7 adjust filters")
-                   else if (all_selected)       paste0("All ", format(n_total, big.mark=","), " stands included")
-                   else                         paste0(format(n_filtered, big.mark=","), " stands ready")
+    status_text <- if (n_filtered == 0 && any_picked)
+                     "0 stands match \u00b7 adjust filters"
+                   else if (!any_picked)
+                     paste0("All ", format(n_total, big.mark=","),
+                            " stands included \u00b7 no filters set")
+                   else
+                     paste0(format(n_filtered, big.mark=","), " of ",
+                            format(n_total, big.mark=","), " stands match")
 
     btn <- tags$button(
       id = "btn_next", type = "button",
@@ -1907,11 +1944,7 @@ server <- function(input, output, session) {
         div(class = "page-footer-status-mark"),
         tags$span(status_text)
       ),
-      div(class = "page-footer-actions",
-        actionButton("btn_filters_skip", "Skip filters \u2192",
-                     class = "skip-link"),
-        btn
-      )
+      div(class = "page-footer-actions", btn)
     )
   })
 
@@ -1930,23 +1963,22 @@ server <- function(input, output, session) {
 
     aoi_count <- nrow(state$freq_table %||% data.frame())
 
-    # Filters row: read-only chips (or condensed "All ..." text when full set)
-    ft_sel   <- state$selected_forest_types     %||% character()
-    sc_sel   <- state$selected_structure_classes %||% character()
-    ft_avail <- available_forest_types()
-    sc_avail <- available_structure_classes()
-    ft_full  <- length(ft_sel) == length(ft_avail) && length(ft_avail) > 0
-    sc_full  <- length(sc_sel) == length(sc_avail) && length(sc_avail) > 0
+    # Filters row: read-only chips, or condensed "all" text when nothing
+    # is picked (which under the new include-only semantics = no filter).
+    ft_sel <- input$ft_picks %||% character()
+    sc_sel <- input$sc_picks %||% character()
+    ft_empty <- length(ft_sel) == 0
+    sc_empty <- length(sc_sel) == 0
 
-    filters_value <- if (ft_full && sc_full) {
+    filters_value <- if (ft_empty && sc_empty) {
       tags$span(class = "summary-row-value",
                 "All forest types \u00b7 all structure classes")
     } else {
       tagList(
-        if (!ft_full) div(class = "chip-grid", style = "margin-bottom: 0.5rem;",
+        if (!ft_empty) div(class = "chip-grid", style = "margin-bottom: 0.5rem;",
           lapply(ft_sel, function(v) tags$span(class = "chip chip-orange", v))
         ),
-        if (!sc_full) div(class = "chip-grid",
+        if (!sc_empty) div(class = "chip-grid",
           lapply(sc_sel, function(v) tags$span(class = "chip chip-orange", v))
         )
       )
