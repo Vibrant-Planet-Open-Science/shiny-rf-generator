@@ -528,3 +528,23 @@ get_filtered_stdstk <- function(stdstk_data_frame, stand_data_frame){
       StandID = as.character(StandID)
     )
 }
+
+
+# Per-EC distribution stats across the filtered AOI stands.
+# Used by the page 06 Weights & Effects screen to give users context
+# (e.g. "0 - 100 · med 46") when picking Range mode min/max bounds.
+# Returns NA stats when the column isn't present in the data so the UI
+# can render a graceful em-dash fallback instead of crashing.
+ec_range_stats <- function(filtered_data, ec_column) {
+  na_result <- list(min = NA_real_, max = NA_real_, median = NA_real_)
+  if (is.null(filtered_data) || !is.data.frame(filtered_data)) return(na_result)
+  if (!ec_column %in% names(filtered_data))                    return(na_result)
+  v <- suppressWarnings(as.numeric(filtered_data[[ec_column]]))
+  v <- v[is.finite(v)]
+  if (length(v) == 0) return(na_result)
+  list(
+    min    = min(v),
+    max    = max(v),
+    median = stats::median(v)
+  )
+}

@@ -308,6 +308,42 @@ ui <- fluidPage(
           if (input) filterEcList(input.value);
         }, 0);
       });
+
+      // ── Page 06 — EC weight row helpers (segmented controls).
+      // Effect toggle: clicked button gets .is-selected; row gets the matching
+      // .fx-positive / .fx-negative / .fx-range class so CSS can swap the right
+      // column between the importance picker and the min/max inputs.
+      function selectEcEffect(safeId, effect) {
+        var row = document.getElementById('ecrow_' + safeId);
+        if (!row) return;
+        row.querySelectorAll('.ec-effect-btn').forEach(function(btn) {
+          btn.classList.toggle('is-selected', btn.dataset.effect === effect);
+        });
+        row.classList.remove('fx-positive', 'fx-negative', 'fx-range');
+        if (effect === 'Positive')      row.classList.add('fx-positive');
+        else if (effect === 'Negative') row.classList.add('fx-negative');
+        else if (effect === 'Range')    row.classList.add('fx-range');
+        Shiny.setInputValue('fx_' + safeId, effect, {priority: 'event'});
+      }
+
+      // Importance picker: 1-5 segmented buttons.
+      function selectEcImportance(safeId, value) {
+        var row = document.getElementById('ecrow_' + safeId);
+        if (!row) return;
+        row.querySelectorAll('.ec-importance-btn').forEach(function(btn) {
+          btn.classList.toggle('is-selected',
+            parseInt(btn.dataset.value, 10) === value);
+        });
+        Shiny.setInputValue('wt_' + safeId, value, {priority: 'event'});
+      }
+
+      // Min/max number inputs — push to Shiny on every keystroke. Empty input
+      // becomes null so the backend NA-coercion kicks in.
+      function pushEcRange(safeId, kind, raw) {
+        var v = (raw === '' || raw == null) ? null : parseFloat(raw);
+        if (v != null && !isFinite(v)) v = null;
+        Shiny.setInputValue('rng_' + kind + '_' + safeId, v, {priority: 'event'});
+      }
     "))
 
 
@@ -1310,74 +1346,184 @@ server <- function(input, output, session) {
   }
 
   # ── Screen 7: Weights & effects ────────────────────────────────────────
-  # One row per selected EC with:
-  #   - EC label + subcategory badge
-  #   - Importance dropdown (1-5, default 3)
-  #   - Effect type radio: Positive / Negative / Range
-  #   - Conditional min/max inputs when Range is selected
-  # Input IDs use a "safe" version of the column name (non-alphanumeric → _).
+  # Editorial chrome (header + teaching + reactive footer) plus one .ec-row
+  # per picked EC. Each row hosts the subcategory badge, range/median stats
+  # (visible only in Range mode), a segmented POS/NEG/RANGE effect toggle,
+  # and a 1-5 importance picker (or min/max inputs when Range is on).
+  # See render_ec_weight_row() for the row markup. Input IDs use a "safe"
+  # version of the column name (non-alphanumeric replaced with _).
   render_weights <- function() {
     picks <- isolate(selected_ecs())
-    if (length(picks) == 0) {
-      body <- div(style = "color:#7a8a75;font-style:italic;padding:20px 0;",
-                  "No ECs selected. Go back and pick at least one.")
+
+    body <- if (length(picks) == 0) {
+      div(class = "ec-empty",
+        "No ECs picked yet. Go back to ", tags$strong("Ecosystem components"),
+        " and pick at least one.")
     } else {
-      ec_rows <- lapply(picks, function(col) {
-        info <- ec_labels[ec_labels$column == col, ]
-        lbl  <- if (nrow(info) > 0) info$label[1] else col
-        cat  <- if (nrow(info) > 0) info$subcategory[1] else ""
-        # Safe ID: replace non-alphanumeric chars with _ (for Shiny input IDs)
-        safe <- gsub("[^a-zA-Z0-9]", "_", col)
-        div(style = "border:1px solid #e0d4b8;border-radius:8px;padding:14px 18px;margin-bottom:10px;background:#fff;",
-            fluidRow(
-              column(4,
-                     bslib::tooltip(
-                       trigger = tags$span(
-                         tags$strong(lbl),
-                         tags$i(class = "bi bi-info-circle ms-1", style = "opacity: 0.6;")
-                       ),
-                       ec_tooltip(col)
-                     ),
-                     # Subcategory badge
-                     tags$span(style = "display:inline-block;background:#e8dcc8;color:#4a3c2a;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:8px;", cat)
-              ),
-              column(2,
-                     div(class = "section-label", "Importance"),
-                     selectInput(paste0("wt_", safe), NULL, choices = 1:5, selected = 3, width = "80px")
-              ),
-              column(3,
-                     div(class = "section-label", "Effect"),
-                     radioButtons(paste0("fx_", safe), NULL,
-                                  choices = c("Positive", "Negative", "Range"),
-                                  selected = "Positive", inline = TRUE)
-              ),
-              column(3,
-                     # Range min/max inputs — only visible when "Range" is selected
-                     conditionalPanel(
-                       condition = sprintf("input.fx_%s == 'Range'", safe),
-                       div(class = "section-label", "Range"),
-                       fluidRow(
-                         column(6, numericInput(paste0("rng_min_", safe), "Min", value = NA, width = "100%")),
-                         column(6, numericInput(paste0("rng_max_", safe), "Max", value = NA, width = "100%"))
-                       )
-                     )
-              )
-            )
-        )
-      })
-      body <- do.call(tagList, ec_rows)
+      do.call(tagList, lapply(picks, render_ec_weight_row))
     }
-    div(class = "card",
-        h2("Weights & effects"),
-        p("Set importance (1 = low, 5 = critical, ties allowed) and effect direction for each EC.",
-          class = "subtitle"),
-        body,
-        div(class = "navbar",
-            actionButton("btn_back", "\u2190 Back",           class = "btn btn-outline-secondary btn-lg"),
-            actionButton("btn_next", "Compute RFs \u2192",    class = "btn btn-primary btn-lg")
+
+    div(class = "main-col",
+
+      # ── Page header ──────────────────────────────────────────────────────
+      div(class = "page-header",
+        div(class = "page-header-numeral", "06"),
+        div(class = "page-header-overline",
+          tags$span(class = "page-header-step", "Build"),
+          tags$span("· Weights & effects")
+        ),
+        h1(tags$strong("Weights"), " ", tags$em("& effects.")),
+        p("Set importance (",
+          tags$strong("1 = low, 5 = critical"), ", ties allowed) and ",
+          "effect direction for each EC.")
+      ),
+
+      # ── Teaching block (default open on first visit) ─────────────────────
+      tags$details(class = "teaching-block", open = NA,
+        tags$summary(class = "teaching-summary",
+          tags$span(class = "teaching-eyebrow", "How weighting works"),
+          tags$span(class = "teaching-headline",
+            "Each EC gets an importance score and a direction. ",
+            "We combine them into a single weighted curve."
+          ),
+          tags$span(class = "teaching-chevron")
+        ),
+        div(class = "teaching-content",
+          div(class = "teaching-body",
+            tags$strong("Importance (1–5)"), " sets how much each EC pulls the ",
+            "final RF. Two ECs at ", tags$strong("5"), " contribute equally; ",
+            "one at ", tags$strong("5"), " and one at ", tags$strong("2"),
+            " means the first carries roughly 2.5× the weight."
+          ),
+          div(class = "teaching-body",
+            tags$strong("Effect"), " says which direction is \"good\" for the HVRA. ",
+            tags$span(class = "chip", "Positive"), " means more is better, ",
+            tags$span(class = "chip", "Negative"), " means less is better, and ",
+            tags$span(class = "chip", "Range"),
+            " means intermediate values are best — too little and too much ",
+            "are both bad (e.g. shrub cover)."
+          ),
+          div(class = "teaching-footer",
+            tags$a(class = "teaching-deepen", href = "#",
+                   "Read the methods paper →")
+          )
         )
+      ),
+
+      # ── EC rows (or empty state) ─────────────────────────────────────────
+      div(id = "ec_weight_rows", body),
+
+      # ── Page footer ──────────────────────────────────────────────────────
+      uiOutput("weights_page_footer")
     )
   }
+
+  # Render one EC row on the Weights & Effects screen.
+  # Markup follows the .ec-row 3-column grid in style.css:
+  #   meta (label + badge + range stats) | effect toggle | importance OR range
+  # The right-column swap (importance picker / min/max inputs) is CSS-driven:
+  # both are in the DOM; .fx-range on the row decides which is visible.
+  #
+  # Input IDs preserved from the v0.1 implementation so the btn_next handler
+  # (search for s == "weights") reads the same names: wt_<safe>, fx_<safe>,
+  # rng_min_<safe>, rng_max_<safe>. State persists across back-nav because
+  # Shiny inputs are global; isolate() reads them here to set initial visuals.
+  render_ec_weight_row <- function(col) {
+    info <- ec_labels[ec_labels$column == col, ]
+    lbl  <- if (nrow(info) > 0) info$label[1] else col
+    cat  <- if (nrow(info) > 0) info$subcategory[1] else ""
+    unit <- if (nrow(info) > 0) info$unit[1] else ""
+    safe <- gsub("[^a-zA-Z0-9]", "_", col)
+
+    stats <- ec_range_stats(state$filtered_data, col)
+
+    # Saved state (back-nav) — NULL on first visit.
+    saved_fx  <- isolate(input[[paste0("fx_", safe)]])
+    saved_wt  <- isolate(input[[paste0("wt_", safe)]]) %||% 3L
+    saved_min <- isolate(input[[paste0("rng_min_", safe)]])
+    saved_max <- isolate(input[[paste0("rng_max_", safe)]])
+
+    fx_class <- switch(saved_fx %||% "",
+                       "Positive" = "fx-positive",
+                       "Negative" = "fx-negative",
+                       "Range"    = "fx-range",
+                       "")
+
+    fmt_stat <- function(x) if (is.na(x)) "—" else format(round(x, 1), big.mark = ",")
+    unit_suffix <- if (nzchar(unit)) paste0(" ", unit) else ""
+
+    div(class = paste("ec-row", fx_class), id = paste0("ecrow_", safe),
+
+      # ── Meta column ──────────────────────────────────────────────────────
+      div(class = "ec-row-meta",
+        div(class = "ec-row-title", lbl),
+        tags$span(class = "ec-row-badge", toupper(cat)),
+        # Stats line — display:none unless .fx-range is on the row.
+        div(class = "ec-row-stats",
+          tags$span(class = "stat-num", fmt_stat(stats$min)), unit_suffix,
+          tags$span(class = "stat-sep", "—"),
+          tags$span(class = "stat-num", fmt_stat(stats$max)), unit_suffix,
+          tags$span(class = "stat-sep", "·"),
+          "med ",
+          tags$span(class = "stat-num", fmt_stat(stats$median)), unit_suffix
+        )
+      ),
+
+      # ── Effect toggle (POS / NEG / RANGE) ───────────────────────────────
+      div(class = "ec-effect-toggle",
+        lapply(c("Positive", "Negative", "Range"), function(eff) {
+          icon  <- switch(eff, "Positive" = "↗", "Negative" = "↘", "Range" = "∧")
+          label <- switch(eff, "Positive" = "POS", "Negative" = "NEG", "Range" = "RANGE")
+          cls  <- paste("ec-effect-btn",
+                        if (identical(saved_fx, eff)) "is-selected" else "")
+          tags$button(type = "button", class = cls,
+            `data-effect` = eff,
+            onclick = sprintf("selectEcEffect('%s', '%s');", safe, eff),
+            tags$span(class = "ec-effect-icon", icon),
+            tags$span(label)
+          )
+        })
+      ),
+
+      # ── Right column A: importance picker (visible unless fx-range) ─────
+      div(class = "ec-importance-picker",
+        tags$span(class = "ec-importance-label", "Importance"),
+        div(class = "ec-importance-buttons",
+          tags$span(class = "ec-importance-anchor", "low"),
+          lapply(1:5, function(v) {
+            cls <- paste("ec-importance-btn",
+                         if (saved_wt == v) "is-selected" else "")
+            tags$button(type = "button", class = cls,
+              `data-value` = v,
+              onclick = sprintf("selectEcImportance('%s', %d);", safe, v),
+              v)
+          }),
+          tags$span(class = "ec-importance-anchor", "crit")
+        )
+      ),
+
+      # ── Right column B: min/max inputs (visible only when fx-range) ─────
+      div(class = "ec-range-inputs",
+        tags$span(class = "ec-range-label", "Min"),
+        tags$input(type = "number",
+          class = "ec-range-input",
+          id    = paste0("rng_min_", safe),
+          value = if (!is.null(saved_min) && !is.na(saved_min)) saved_min else NULL,
+          oninput = sprintf("pushEcRange('%s', 'min', this.value);", safe)
+        ),
+        tags$span(class = "ec-range-label", "Max"),
+        tags$input(type = "number",
+          class = "ec-range-input",
+          id    = paste0("rng_max_", safe),
+          value = if (!is.null(saved_max) && !is.na(saved_max)) saved_max else NULL,
+          oninput = sprintf("pushEcRange('%s', 'max', this.value);", safe)
+        ),
+        if (nzchar(unit)) tags$span(class = "ec-range-unit", unit)
+      )
+    )
+  }
+
+
 
   # ── Screen 8: Review & download ────────────────────────────────────────
   # Three tabs: RF outputs (bar + timeseries plots + table), EC config, fact sheet.
@@ -2111,6 +2257,58 @@ server <- function(input, output, session) {
         div(class = "page-footer-status-mark"),
         tags$span(status_text)
       ),
+      div(class = "page-footer-actions", back_btn, next_btn)
+    )
+  })
+
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Page 06 (Weights & Effects) — reactive footer
+  # ─────────────────────────────────────────────────────────────────────────
+
+  # Footer status reflects how many of the picked ECs have an effect set
+  # (POS, NEG, or RANGE). Compute is gated until every row has a pick —
+  # the backend can fall back to defaults but it's better UX to make the
+  # user actively choose before kicking off the compute.
+  output$weights_page_footer <- renderUI({
+    picks   <- selected_ecs()
+    n_total <- length(picks)
+
+    if (n_total == 0) {
+      status   <- "No ECs picked — go back to Ecosystem components"
+      disabled <- TRUE
+    } else {
+      n_set <- sum(vapply(picks, function(col) {
+        safe <- gsub("[^a-zA-Z0-9]", "_", col)
+        !is.null(input[[paste0("fx_", safe)]])
+      }, logical(1)))
+
+      if (n_set == n_total) {
+        status   <- "All ECs set · ready to compute"
+        disabled <- FALSE
+      } else {
+        status   <- sprintf("%d of %d ECs set · pick an effect for the rest",
+                            n_set, n_total)
+        disabled <- TRUE
+      }
+    }
+
+    back_btn <- tags$button(
+      id = "btn_back", type = "button",
+      class = "btn btn-ghost action-button",
+      tags$span(class = "action-label", "← Back")
+    )
+    next_btn <- tags$button(
+      id = "btn_next", type = "button",
+      class = "btn btn-continue action-button",
+      disabled = if (disabled) "disabled" else NULL,
+      tags$span(class = "action-label", "Compute RFs →")
+    )
+
+    div(class = "page-footer",
+      div(class = "page-footer-status",
+        div(class = "page-footer-status-mark"),
+        tags$span(status)),
       div(class = "page-footer-actions", back_btn, next_btn)
     )
   })
