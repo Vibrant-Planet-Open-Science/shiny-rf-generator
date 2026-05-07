@@ -1932,11 +1932,17 @@ server <- function(input, output, session) {
                      paste0(format(n_filtered, big.mark=","), " of ",
                             format(n_total, big.mark=","), " stands match")
 
-    btn <- tags$button(
+    back_btn <- tags$button(
+      id = "btn_back", type = "button",
+      class = "btn btn-ghost action-button",
+      tags$span(class = "action-label", "\u2190 Back")
+    )
+
+    next_btn <- tags$button(
       id = "btn_next", type = "button",
       class = "btn btn-continue action-button",
       disabled = if (n_filtered > 0) NULL else "disabled",
-      tags$span(class = "action-label", "Continue to review \u2192")
+      tags$span(class = "action-label", "Continue \u2192")
     )
 
     div(class = "page-footer",
@@ -1944,7 +1950,7 @@ server <- function(input, output, session) {
         div(class = "page-footer-status-mark"),
         tags$span(status_text)
       ),
-      div(class = "page-footer-actions", btn)
+      div(class = "page-footer-actions", back_btn, next_btn)
     )
   })
 
@@ -2057,7 +2063,13 @@ server <- function(input, output, session) {
     status_text <- paste0(format(n, big.mark = ","), " stands \u00b7 ",
                           variant, " variant \u00b7 ready to load")
 
-    btn <- tags$button(
+    back_btn <- tags$button(
+      id = "btn_back", type = "button",
+      class = "btn btn-ghost action-button",
+      tags$span(class = "action-label", "\u2190 Back")
+    )
+
+    next_btn <- tags$button(
       id = "btn_next", type = "button",
       class = "btn btn-continue action-button",
       tags$span(class = "action-label", "Load data \u2192")
@@ -2068,7 +2080,7 @@ server <- function(input, output, session) {
         div(class = "page-footer-status-mark"),
         tags$span(status_text)
       ),
-      div(class = "page-footer-actions", btn)
+      div(class = "page-footer-actions", back_btn, next_btn)
     )
   })
 
