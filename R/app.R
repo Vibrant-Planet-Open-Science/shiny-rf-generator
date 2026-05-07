@@ -590,8 +590,17 @@ server <- function(input, output, session) {
     updateCheckboxGroupInput(session, "sc_picks", selected = character())
   })
 
-  # RF type card click handler (stand vs species)
-  observeEvent(input$pick_rftype, { state$rf_type <- input$pick_rftype })
+  # RF type card click handler (stand vs species).
+  # Stand-level has no follow-up choices on this screen, so picking it
+  # auto-advances to ECs — the explicit Continue tap was unintuitive.
+  # Species still waits: the user has to pick ≥1 tree species below and
+  # click Continue, since the species pane appears after the click.
+  observeEvent(input$pick_rftype, {
+    state$rf_type <- input$pick_rftype
+    if (isTRUE(input$pick_rftype == "stand")) {
+      nav_to("ecs")
+    }
+  })
 
   # ── Species data load (triggers when user picks "species" rf_type) ──────
   # Loads StdStk from S3 on first species pick; cached in state$species_list
