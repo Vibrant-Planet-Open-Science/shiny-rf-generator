@@ -69,3 +69,6 @@ qa_reports/
 # Source data artifacts (regenerable from build scripts)
 data/*.xls
 data/*.xlsx
+
+# Local test data (shapefile uploads, etc.)
+data/test_*

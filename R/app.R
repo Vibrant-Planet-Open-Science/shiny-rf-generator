@@ -66,6 +66,19 @@ STEP_LABELS <- c(aoi="AOI", filters="Filters", review="Review", rftype="RF Type"
                  ecs="ECs", weights="Weights", download="Download")
 BREADCRUMB_ORDER <- c("aoi", "filters", "review", "rftype", "ecs", "weights", "download")
 
+# Full-name tooltips for the breadcrumb (shown on hover via bslib::tooltip).
+# STEP_LABELS gives the abbreviated badge text; this gives the full descriptor.
+CRUMB_TOOLTIPS <- c(
+  aoi      = "Area of interest",
+  filters  = "Filters",
+  review   = "Review & Confirm",
+  rftype   = "Response Function Type",
+  ecs      = "Ecosystem Components",
+  weights  = "Weights & effects",
+  download = "Review & Download"
+)
+
+
 # Maximum relative year shown in plots and the on-screen table.
 # Downloads still include the full simulation horizon.
 MAX_DISPLAY_YEAR <- 20
@@ -167,6 +180,7 @@ species_scientific <- function(code) {
 # swaps between wizard screens.
 
 ui <- fluidPage(
+  theme = bslib::bs_theme(version = 5),
   tags$head(
     # Google Fonts: Poppins (display + body) + JetBrains Mono (structural)
     # preconnect hints let the browser open the TLS connection in parallel with
@@ -249,9 +263,10 @@ ui <- fluidPage(
       tags$header(class = "topbar",
         div(class = "topbar-left",
           div(class = "topbar-brand",
-            div(class = "topbar-mark"),
+            tags$img(class = "topbar-mark",
+                    src = "www/VPDC_Avatar_Color_2024.png",
+                    alt = "Vibrant Planet"),
             tags$span(class = "topbar-brand-name", "RF Generator"),
-            tags$span(class = "topbar-brand-sub", "v2.0")
           ),
           tags$nav(class = "crumbs", uiOutput("breadcrumb", inline = TRUE))
         ),
@@ -469,6 +484,23 @@ server <- function(input, output, session) {
     idx <- which(SCREENS == s)
     if (length(idx) && idx > 1) nav_to(SCREENS[idx - 1])
   })
+
+
+  # ── Breadcrumb click navigation (back-only) ──────────────────────────
+  # Done crumbs in the breadcrumb fire input$crumb_click with the target
+  # screen key. We only honor it for screens earlier than the current one
+  # — forward jumps are rejected because state from intermediate screens
+  # may not be populated yet.
+  observeEvent(input$crumb_click, {
+    target  <- input$crumb_click
+    if (is.null(target) || !nzchar(target)) return()
+    cur_idx <- which(BREADCRUMB_ORDER == state$screen)
+    tgt_idx <- which(BREADCRUMB_ORDER == target)
+    if (length(tgt_idx) && length(cur_idx) && tgt_idx < cur_idx) {
+      nav_to(target)
+    }
+  }, ignoreInit = TRUE)
+
 
 
   # ── Reset (start over) ───────────────────────────────────────────────────
@@ -711,12 +743,22 @@ server <- function(input, output, session) {
           section_steps <- c(section_steps,
                              list(tags$span("\u203a", class = "crumb-sep")))
         }
-        section_steps <- c(section_steps, list(
-          tags$span(class = cls,
-            tags$span(class = "crumb-mark", mark),
-            tags$span(label)
-          )
-        ))
+        crumb_el <- tags$span(class = cls,
+          # Done crumbs get a JS hook that fires input$crumb_click. Future and
+          # current crumbs render the same markup but the cursor: not-allowed
+          # CSS rule + cls check on the server prevents navigation.
+          onclick = if (i < cur_idx)
+            sprintf("Shiny.setInputValue('crumb_click', '%s', {priority:'event'});", key)
+          else NULL,
+          tags$span(class = "crumb-mark", mark),
+          tags$span(class = "crumb-label", label)
+        )
+
+        # Wrap with a tooltip showing the full step name.
+        crumb_el <- bslib::tooltip(crumb_el, CRUMB_TOOLTIPS[[key]], placement = "bottom")
+
+        section_steps <- c(section_steps, list(crumb_el))
+
       }
 
       div(class = section_class,

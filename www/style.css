@@ -154,17 +154,7 @@ h6 { font-size: var(--text-base); }
 }
 .topbar-mark {
   width: 1.5rem; height: 1.5rem;
-  background: var(--vp-orange);
-  border-radius: 50%;
-  position: relative;
   flex-shrink: 0;
-}
-.topbar-mark::after {
-  content: '';
-  position: absolute;
-  inset: 0.3125rem;
-  border-radius: 50%;
-  background: var(--vp-forest-deep);
 }
 .topbar-brand-name { font-weight: 700; }
 .topbar-brand-sub {
@@ -206,22 +196,25 @@ h6 { font-size: var(--text-base); }
 }
 .crumb {
   display: inline-flex;
+  flex-direction: column;       /* stack circle over label */
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
   color: rgba(250, 248, 241, 0.4);
   text-decoration: none;
   cursor: pointer;
   transition: color var(--t-fast);
   padding: 0.25rem 0;
+  text-align: center;
+  min-width: 1rem;         
 }
 .crumb-mark {
   display: inline-grid; place-items: center;
-  width: 1rem; height: 1rem;
+  width: 1rem; height: 1rem;    
   border-radius: 50%;
   border: 1px solid rgba(250, 248, 241, 0.25);
   background: transparent;
   font-family: var(--font-mono);
-  font-size: 0.5rem; font-weight: 500;
+  font-size: 0.5rem; font-weight: 500;  /* was 0.5rem */
   color: rgba(250, 248, 241, 0.5);
 }
 .crumb.is-current { color: var(--vp-paper); font-weight: 600; }
@@ -230,19 +223,37 @@ h6 { font-size: var(--text-base); }
   border-color: var(--vp-orange);
   color: white;
 }
-.crumb.is-done { color: rgba(250, 248, 241, 0.7); cursor: pointer; }
+.crumb.is-done {
+  color: rgba(250, 248, 241, 0.7);
+  cursor: pointer;   
+}
 .crumb.is-done .crumb-mark {
   background: var(--vp-forest-mid);
   border-color: var(--vp-forest-mid);
   color: var(--vp-paper);
 }
-.crumb.is-done .crumb-mark::before { content: '✓'; font-size: 0.625rem; }
-.crumb.is-done:hover { color: var(--vp-paper); }
+.crumb.is-done .crumb-mark::before { content: '✓'; font-size: 0.875rem; }
+.crumb.is-done:hover {
+  color: var(--vp-paper);
+  /* Optional: add a subtle background highlight on hover */
+  background: rgba(250, 248, 241, 0.06);
+  border-radius: var(--radius-xs);
+}
 .crumb.is-future { cursor: not-allowed; opacity: 0.85; }
 .crumb-sep {
   color: rgba(250, 248, 241, 0.2);
   font-size: var(--text-xs);
   user-select: none;
+  align-self: flex-start;
+  margin-top: 0.4375rem;         /* nudge down to vertically center on circle */
+}
+
+/* Narrow viewports: collapse crumbs to numbers + checkmarks only.
+   Section labels (DEFINE / BUILD / EXPORT) keep their normal display. */
+@media (max-width: 768px) {
+  .crumb .crumb-label {
+    display: none;
+  }
 }
 
 /* ============================================================
@@ -607,9 +618,6 @@ h6 { font-size: var(--text-base); }
   position: relative;
 }
 .teaching-summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
   cursor: pointer;
   list-style: none;
@@ -983,21 +991,23 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: rgba(250, 248, 241, 0.4);
+  text-align: center;
 }
 .crumbs-section.is-current .crumbs-section-label {
   color: var(--vp-orange-deep);
 }
 .crumbs-section-steps {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-3);
 }
 .crumbs-divider {
   width: 1px;
-  height: 1.5rem;
+  height: 1.625rem;           
   background: rgba(250, 248, 241, 0.18);
-  margin-top: 1.25rem;  /* push down to align with crumb row */
+  margin-top: 1.5rem;            
 }
+
 
 /* ============================================================
    COMPONENT — Chips (design system v0.1, finally added)
