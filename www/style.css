@@ -1612,3 +1612,262 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
 /* ═══════════════════════════════════════════════════════════════════════
    LEGACY ENDS
    ═══════════════════════════════════════════════════════════════════════ */
+
+
+/* ============================================================
+   COMPONENT — EC weight row (page 06 — Weights & Effects)
+   Three-column grid: meta (label + badge + range stats) | effect
+   toggle (POS/NEG/RANGE) | importance picker OR min/max inputs.
+   The right-column swap is CSS-driven — both elements live in the
+   DOM; the .fx-range class on the row hides one and shows the other.
+   ============================================================ */
+
+.ec-row {
+  display: grid;
+  /* Fixed track widths so the layout doesn't shift between modes:
+     col 1 = meta (flexes), col 2 = effect toggle, col 3 = importance / range.
+     The right column reserves enough width for the importance picker (the
+     wider of the two right-column states) so swapping to min/max inputs
+     under .fx-range doesn't shrink the cell and bump the other columns. */
+  grid-template-columns: minmax(280px, 1fr) 22rem 22rem;
+  gap: var(--space-5);
+  align-items: center;
+  background: white;
+  border: 1px solid var(--border-soft);
+  border-left: 4px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-3);
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+.ec-row.fx-positive {
+  border-left-color: var(--vp-forest-light);
+  background: linear-gradient(to right, rgba(148, 176, 149, 0.08), white 12%);
+}
+.ec-row.fx-negative {
+  border-left-color: var(--vp-danger);
+  background: linear-gradient(to right, rgba(168, 52, 30, 0.06), white 12%);
+}
+.ec-row.fx-range {
+  border-left-color: var(--vp-orange);
+  background: linear-gradient(to right, var(--vp-orange-tint), white 18%);
+}
+
+/* ── Left column: title + subcategory badge + conditional range stats ── */
+.ec-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.ec-row-title {
+  font-weight: 600;
+  font-size: var(--text-md);
+  color: var(--vp-ink);
+  line-height: 1.2;
+}
+.ec-row-badge {
+  display: inline-block;
+  width: fit-content;
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  background: var(--vp-paper-warm);
+  color: var(--vp-ink-mid);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-xs);
+}
+/* Range stats text — only shown when fx-range is active. */
+.ec-row-stats {
+  display: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--vp-ink-light);
+  letter-spacing: 0.04em;
+  margin-top: var(--space-1);
+}
+.ec-row.fx-range .ec-row-stats { display: block; }
+.ec-row-stats .stat-num {
+  color: var(--vp-ink);
+  font-weight: 600;
+}
+.ec-row-stats .stat-sep {
+  color: var(--vp-ink-faint);
+  margin: 0 0.25rem;
+}
+
+/* ── Middle column: effect toggle (POS / NEG / RANGE) ────────────── */
+.ec-effect-toggle {
+  display: flex;
+  gap: var(--space-2);
+}
+.ec-effect-btn {
+  /* Fixed min-width so all three buttons are the same size regardless of
+     label length ("POS"/"NEG" vs "RANGE"). Keeps the toggle column stable. */
+  min-width: 6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: var(--space-2) var(--space-3);
+  background: white;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--vp-ink-light);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.ec-effect-btn:hover {
+  border-color: var(--vp-ink-mid);
+  color: var(--vp-ink);
+}
+.ec-effect-btn .ec-effect-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+.ec-effect-btn.is-selected[data-effect="Positive"] {
+  background: var(--vp-forest-tint);
+  border-color: var(--vp-forest-mid);
+  color: var(--vp-forest-dark);
+}
+.ec-effect-btn.is-selected[data-effect="Negative"] {
+  background: rgba(168, 52, 30, 0.10);
+  border-color: var(--vp-danger);
+  color: var(--vp-danger);
+}
+.ec-effect-btn.is-selected[data-effect="Range"] {
+  background: var(--vp-orange-tint);
+  border-color: var(--vp-orange);
+  color: var(--vp-orange-deep);
+}
+
+/* ── Right column A: importance picker (default visible) ─────────── */
+.ec-importance-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.ec-row.fx-range .ec-importance-picker { display: none; }
+
+.ec-importance-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--vp-ink-light);
+}
+.ec-importance-buttons {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: white;
+  overflow: hidden;
+}
+.ec-importance-anchor {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--vp-ink-light);
+  background: var(--vp-paper-warm);
+}
+.ec-importance-btn {
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  background: white;
+  border: none;
+  border-left: 1px solid var(--border-soft);
+  color: var(--vp-ink-mid);
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.ec-importance-btn:hover { background: var(--vp-paper-warm); }
+.ec-importance-btn.is-selected {
+  background: var(--vp-forest-deep);
+  color: white;
+}
+
+/* ── Right column B: min/max inputs (visible only when fx-range) ── */
+.ec-range-inputs {
+  display: none;
+  align-items: center;
+  gap: var(--space-2);
+}
+.ec-row.fx-range .ec-range-inputs { display: flex; }
+
+.ec-range-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--vp-ink-light);
+}
+.ec-range-input {
+  width: 4.5rem;
+  padding: 0.375rem var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-align: center;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: white;
+  color: var(--vp-ink);
+}
+.ec-range-input:focus {
+  outline: none;
+  border-color: var(--vp-orange);
+  box-shadow: var(--focus-ring);
+}
+/* Hide the spinner controls — they crowd the layout. */
+.ec-range-input::-webkit-outer-spin-button,
+.ec-range-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.ec-range-input { -moz-appearance: textfield; appearance: textfield; }
+
+.ec-range-unit {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--vp-ink-light);
+  margin-left: var(--space-1);
+}
+
+/* ── Empty state when user lands on page 06 with zero ECs picked ── */
+.ec-empty {
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--vp-ink-mid);
+  font-style: italic;
+  background: var(--vp-paper-warm);
+  border-radius: var(--radius-md);
+}
+
+/* ── Responsive: stack the row vertically on narrow viewports. ──── */
+@media (max-width: 960px) {
+  .ec-row {
+    grid-template-columns: 1fr;
+    row-gap: var(--space-4);
+  }
+  .ec-effect-toggle,
+  .ec-importance-picker,
+  .ec-range-inputs {
+    justify-content: flex-start;
+  }
+}
