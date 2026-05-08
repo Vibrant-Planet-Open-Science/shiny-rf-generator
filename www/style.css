@@ -1859,15 +1859,219 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   border-radius: var(--radius-md);
 }
 
-/* ── Responsive: stack the row vertically on narrow viewports. ──── */
-@media (max-width: 960px) {
-  .ec-row {
-    grid-template-columns: 1fr;
-    row-gap: var(--space-4);
-  }
-  .ec-effect-toggle,
-  .ec-importance-picker,
-  .ec-range-inputs {
-    justify-content: flex-start;
-  }
+/* Effect toggle, importance picker, and range inputs all align to the
+   left of their stacked row (no longer pinned to a grid track edge). */
+.ec-effect-toggle,
+.ec-importance-picker,
+.ec-range-inputs {
+  justify-content: flex-start;
+}
+
+/* Subtle separator between the meta block and the controls so the eye
+   can find the boundary without the row feeling busy. */
+.ec-row-meta {
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-faint);
+}
+
+
+/* ============================================================
+   COMPONENT — Output card chrome (page 07 — Review & download)
+   Both the chart card and the table card share the same outer
+   shell: bordered, rounded, header strip with overline + title,
+   body fills below.
+   ============================================================ */
+
+.output-card {
+  background: white;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-5);
+  overflow: hidden;
+}
+.output-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  background: var(--vp-paper-warm);
+  border-bottom: 1px solid var(--border-soft);
+}
+.output-card-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+.output-card-overline {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--vp-orange-deep);
+}
+.output-card-title {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--vp-ink);
+}
+.output-card-title em {
+  font-weight: 400;
+  font-style: italic;
+  color: var(--vp-ink-mid);
+}
+.output-card-body {
+  padding: var(--space-5);
+  background: var(--vp-paper);
+}
+
+
+/* ── Chart-view toggle (TIME SERIES / BAR · T10) ──────────────── */
+.chart-toggle {
+  display: inline-flex;
+  background: var(--vp-paper);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.chart-toggle-btn {
+  padding: 0.4375rem var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: transparent;
+  border: none;
+  color: var(--vp-ink-light);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.chart-toggle-btn + .chart-toggle-btn {
+  border-left: 1px solid var(--border-soft);
+}
+.chart-toggle-btn:hover { color: var(--vp-ink); }
+.chart-toggle-btn.is-selected {
+  background: var(--vp-forest-deep);
+  color: white;
+}
+
+
+/* ── Chart container — sits inside .output-card-body for the chart card */
+.rf-chart-container {
+  width: 100%;
+}
+.rf-chart-container .girafe_container_std {
+  width: 100% !important;
+}
+
+
+/* ── RF values table ─────────────────────────────────────────── */
+.rf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+.rf-table-th {
+  padding: var(--space-3) var(--space-4);
+  text-align: right;
+  font-weight: 600;
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vp-ink-light);
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--vp-paper);
+}
+.rf-table-th-scenario {
+  text-align: left;
+}
+.rf-table-row {
+  transition: background var(--t-fast);
+}
+.rf-table-row:hover {
+  background: var(--vp-paper-warm);
+}
+.rf-table-row-baseline {
+  font-style: italic;
+}
+.rf-table-cell {
+  padding: var(--space-3) var(--space-4);
+  text-align: right;
+  color: var(--vp-ink);
+  border-bottom: 1px solid var(--border-faint);
+}
+.rf-table-cell-scenario {
+  text-align: left;
+  font-weight: 500;
+}
+.rf-table-neg {
+  color: var(--vp-danger);
+}
+.rf-table-zero {
+  color: var(--vp-ink-light);
+}
+.rf-table-na {
+  color: var(--vp-ink-faint);
+  text-align: center;
+}
+.rf-table-empty {
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--vp-ink-light);
+  font-style: italic;
+}
+
+
+/* ============================================================
+   COMPONENT — Collapsible details card (page 07 — EC config + Fact sheet)
+   Re-uses the <details>/<summary> pattern from .teaching-block but with
+   a more neutral style (no orange accent). Stack below the table card.
+   ============================================================ */
+
+.details-card {
+  background: white;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+  overflow: hidden;
+}
+.details-card[open] {
+  border-color: var(--border-medium);
+}
+.details-card-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--vp-ink-mid);
+  transition: background var(--t-fast);
+}
+.details-card-summary::-webkit-details-marker { display: none; }
+.details-card-summary:hover {
+  background: var(--vp-paper-warm);
+}
+.details-card-chevron {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  color: var(--vp-ink-light);
+  transition: transform var(--t-fast);
+}
+.details-card-chevron::before {
+  content: "+";
+}
+.details-card[open] .details-card-chevron::before {
+  content: "\2212";  /* minus */
+}
+.details-card-body {
+  padding: var(--space-5);
+  border-top: 1px solid var(--border-faint);
+  background: var(--vp-paper);
 }

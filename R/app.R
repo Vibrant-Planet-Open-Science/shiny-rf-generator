@@ -32,6 +32,7 @@
 source(here::here("R", "functions.R"))
 source(here::here("R", "ec_labels.R"))
 source(here::here("R", "ec_tooltips.R"))
+source(here::here("R", "charts.R"))
 
 library(shiny)
 library(bslib)
@@ -343,6 +344,16 @@ ui <- fluidPage(
         var v = (raw === '' || raw == null) ? null : parseFloat(raw);
         if (v != null && !isFinite(v)) v = null;
         Shiny.setInputValue('rng_' + kind + '_' + safeId, v, {priority: 'event'});
+      }
+
+      // ── Page 07 — chart view toggle (TIME SERIES / BAR · T10).
+      // Selected button gets .is-selected; sets input$chart_view which the
+      // server-side renderUI reads to swap between ggiraph time-series and bar.
+      function selectChartView(view) {
+        document.querySelectorAll('.chart-toggle-btn').forEach(function(btn) {
+          btn.classList.toggle('is-selected', btn.dataset.view === view);
+        });
+        Shiny.setInputValue('chart_view', view, {priority: 'event'});
       }
     "))
 
@@ -1027,7 +1038,7 @@ server <- function(input, output, session) {
           tabPanel("Map",
             div(class = "map-card-meta",
               div(class = "map-card-overline",
-                  "RESOLVE 2017 ecoregions \u00b7 click to select"),
+                  "RESOLVE 2017 ecoregions \u00b7"),
               div(class = "map-card-help",
                   "click to select \u00b7 click again to remove")
             ),
@@ -1235,7 +1246,7 @@ server <- function(input, output, session) {
         column(6, div(class = cls_stand,
           onclick = "Shiny.setInputValue('pick_rftype', 'stand', {priority: 'event'});",
           div(class = "section-label", "Stand-level"),
-          h2(tags$strong("Whole-stand"), " ", tags$em("metrics.")),
+          h2(tags$strong("Whole stand"), " ", tags$em("metrics.")),
           p("Canopy cover, structure, fuels, snag density. The forest as a system."),
           div(class = "chip-grid",
             tags$span(class = "chip", "Canopy cover"),
@@ -1526,67 +1537,146 @@ server <- function(input, output, session) {
 
 
   # ── Screen 8: Review & download ────────────────────────────────────────
-  # Three tabs: RF outputs (bar + timeseries plots + table), EC config, fact sheet.
-  # Four download buttons: RF CSV, EC config CSV, fact sheet MD, zip of all three.
+  # Editorial chrome (header + chart card + table card + collapsible details
+  # for EC config and Fact sheet). Charts use ggiraph for pixel-match with
+  # the design mockup; table is custom HTML for full styling control.
+  # Download row is the existing v0.1 button strip — slated for its own
+  # design pass. EC config and Fact sheet sections retain the existing DT
+  # / uiOutput renderers, just wrapped in <details> cards.
   render_download <- function() {
-    nm      <- input$hvra_name %||% "Unnamed HVRA"
-    sci     <- input$hvra_sci %||% ""
+    nm       <- input$hvra_name %||% "Unnamed HVRA"
+    sci      <- input$hvra_sci  %||% ""
     name_str <- if (nzchar(sci)) paste0(nm, " (", sci, ")") else nm
-    div(class = "card",
-        h2("Review & download"),
-        p(name_str, class = "subtitle"),
-        tabsetPanel(type = "tabs",
-                    # -- RF outputs tab: plotly bar + timeseries, then data table --
-                    tabPanel("RF outputs",
-                             div(style = "padding:20px 0;",
-                                 tabsetPanel(id = "rf_plot_tabs", type = "pills",
-                                   tabPanel("Bar plot",
-                                     div(style = "padding:12px 0;",
-                                         fluidRow(
-                                           column(4, uiOutput("rf_year_selector")),
-                                           column(8)
-                                         ),
-                                         plotly::plotlyOutput("rf_bar_plot", height = "350px")
-                                     )
-                                   ),
-                                   tabPanel("Time series",
-                                     div(style = "padding:12px 0;",
-                                         plotly::plotlyOutput("rf_ts_plot", height = "400px")
-                                     )
-                                   )
-                                 ),
-                                 tags$hr(),
-                                 tags$details(class = "details-wrap",
-                                   tags$summary("RF table"),
-                                   div(style = "padding-top:12px;",
-                                       selectInput("rf_year_filter", label = "View year:",
-                                                   choices = NULL, selected = "All",
-                                                   width = "150px"),
-                                       DT::dataTableOutput("rf_preview_table")
-                                   )
-                                 )
-                             )
-                    ),
-                    # -- EC configuration tab --
-                    tabPanel("EC configuration",
-                             div(style = "padding:20px 0;", DT::dataTableOutput("ec_config_table"))
-                    ),
-                    # -- Fact sheet preview tab --
-                    tabPanel("Fact sheet",
-                             div(style = "padding:20px 0;", uiOutput("factsheet_preview"))
-                    )
+
+    div(class = "main-col",
+
+      # ── Page header ──────────────────────────────────────────────────────
+      div(class = "page-header",
+        div(class = "page-header-numeral", "07"),
+        div(class = "page-header-overline",
+          tags$span(class = "page-header-step", "Export"),
+          tags$span("· Download")
         ),
-        # Download buttons row
-        div(style = "margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;",
-            downloadButton("dl_rf",        "RF outputs (CSV)",     class = "btn btn-outline-secondary"),
-            downloadButton("dl_ec",        "EC config (CSV)",      class = "btn btn-outline-secondary"),
-            downloadButton("dl_factsheet", "Fact sheet (md)",      class = "btn btn-outline-secondary"),
-            downloadButton("dl_all",       "Download all (zip)",   class = "btn btn-primary")
+        h1(tags$strong("Your RF"), " ", tags$em("is ready.")),
+        p("The weighted response function for ", tags$strong(name_str),
+          " across six wildfire intensity classes. ",
+          "Toggle to a year-10 snapshot, scan the table, download the data.")
+      ),
+
+      # ── Chart card (toggle + ggiraph chart) ──────────────────────────────
+      div(class = "output-card",
+        div(class = "output-card-header",
+          div(class = "output-card-header-text",
+            tags$span(class = "output-card-overline", "WEIGHTED RF"),
+            tags$span(class = "output-card-title",
+              tags$strong("Response"), " ", tags$em("by wildfire intensity"))
+          ),
+          # Chart-view toggle (TIME SERIES / BAR · T10) — wired by selectChartView JS.
+          div(class = "chart-toggle",
+            tags$button(type = "button",
+              class = "chart-toggle-btn is-selected",
+              `data-view` = "timeseries",
+              onclick = "selectChartView('timeseries');",
+              "Time series"),
+            tags$button(type = "button",
+              class = "chart-toggle-btn",
+              `data-view` = "bar",
+              onclick = "selectChartView('bar');",
+              "Bar · T10")
+          )
         ),
-        div(class = "navbar",
-            actionButton("btn_back",  "\u2190 Back",          class = "btn btn-outline-secondary btn-lg"),
-            actionButton("btn_reset", "Start a new RF", class = "btn btn-outline-danger btn-lg")
+        div(class = "output-card-body",
+          div(class = "rf-chart-container",
+            uiOutput("rf_chart_swap")
+          )
         )
+      ),
+
+      # ── Table card (RF values at every t-step) ───────────────────────────
+      div(class = "output-card",
+        div(class = "output-card-header",
+          div(class = "output-card-header-text",
+            tags$span(class = "output-card-overline", "TABULAR OUTPUT"),
+            tags$span(class = "output-card-title",
+              tags$strong("RF values"), " ", tags$em("at every t-step"))
+          )
+        ),
+        div(class = "output-card-body",
+          uiOutput("rf_table_card")
+        )
+      ),
+
+      # ── Collapsible: per-EC RF breakdown ─────────────────────────────────
+      # The wide table from v0.1: one row per MgmtID x rel.time, with one
+      # column per picked EC plus the Combined column. Year filter dropdown
+      # narrows to a single relative-year if needed. Reactives behind this
+      # (rf_table_wide, filtered_rf_tbl, output$rf_preview_table) are
+      # unchanged from the v0.1 implementation.
+      tags$details(class = "details-card",
+        tags$summary(class = "details-card-summary",
+          tags$span("Per-EC RF breakdown"),
+          tags$span(class = "details-card-chevron")
+        ),
+        div(class = "details-card-body",
+          div(style = "margin-bottom: 0.75rem;",
+            selectInput("rf_year_filter", label = "View year:",
+                        choices = NULL, selected = "All",
+                        width = "150px")
+          ),
+          DT::dataTableOutput("rf_preview_table")
+        )
+      ),
+
+      # ── Collapsible: EC configuration ────────────────────────────────────
+      tags$details(class = "details-card",
+        tags$summary(class = "details-card-summary",
+          tags$span("EC configuration"),
+          tags$span(class = "details-card-chevron")
+        ),
+        div(class = "details-card-body",
+          DT::dataTableOutput("ec_config_table")
+        )
+      ),
+
+      # ── Collapsible: Fact sheet ──────────────────────────────────────────
+      tags$details(class = "details-card",
+        tags$summary(class = "details-card-summary",
+          tags$span("Fact sheet preview"),
+          tags$span(class = "details-card-chevron")
+        ),
+        div(class = "details-card-body",
+          uiOutput("factsheet_preview")
+        )
+      ),
+      # -- Download row (v0.1 placeholder -- slated for its own design pass) --
+      div(class = "download-row-legacy",
+          style = "margin-top: 1.25rem; display: flex; gap: 0.5rem; flex-wrap: wrap;",
+        downloadButton("dl_rf",        "RF outputs (CSV)",   class = "btn btn-outline-secondary"),
+        downloadButton("dl_ec",        "EC config (CSV)",    class = "btn btn-outline-secondary"),
+        downloadButton("dl_factsheet", "Fact sheet (md)",    class = "btn btn-outline-secondary"),
+        downloadButton("dl_all",       "Download all (zip)", class = "btn btn-primary")
+      ),
+
+      # -- Page footer (Back / Start a new RF) --
+      # Matches the .page-footer pattern from pages 02-06: status row + actions
+      # row. The "Start a new RF" button keeps id="btn_reset" so the existing
+      # observer at line ~615 fires (clears all state and returns to AOI).
+      div(class = "page-footer",
+        div(class = "page-footer-status",
+          div(class = "page-footer-status-mark"),
+          tags$span("RF complete \u00b7 download below or start a fresh wizard")
+        ),
+        div(class = "page-footer-actions",
+          tags$button(id = "btn_back", type = "button",
+            class = "btn btn-ghost action-button",
+            tags$span(class = "action-label", "\u2190 Back")
+          ),
+          tags$button(id = "btn_reset", type = "button",
+            class = "btn btn-ghost action-button",
+            tags$span(class = "action-label", "Start a new RF")
+          )
+        )
+      )
     )
   }
 
@@ -2475,6 +2565,49 @@ server <- function(input, output, session) {
         dplyr::filter(rel.time >= 0, rel.time <= MAX_DISPLAY_YEAR) |>
         dplyr::mutate(median_rf = round(median_rf, 2))
     )
+  })
+
+
+  # ── Page 07 (Review & download) — new ggiraph chart outputs ──────────
+  # Chart-view toggle (TIME SERIES / BAR · T10) is wired client-side via
+  # selectChartView; here we read input$chart_view and swap which
+  # girafeOutput is rendered. Both renderers read from rf_plot_data().
+
+  output$rf_chart_swap <- renderUI({
+    view <- input$chart_view %||% "timeseries"
+    if (view == "bar") {
+      ggiraph::girafeOutput("rf_chart_bar", height = "440px")
+    } else {
+      ggiraph::girafeOutput("rf_chart_ts",  height = "440px")
+    }
+  })
+
+  output$rf_chart_ts <- ggiraph::renderGirafe({
+    d <- rf_plot_data()
+    if (is.null(d)) return(NULL)
+    render_rf_timeseries(d$combined)
+  })
+
+  # Bar snapshot defaults to year 10 — matches the mockup's "BAR · T10".
+  # If year 10 isn't in the data (e.g. shorter horizon), fall back to the
+  # latest available post-disturbance year.
+  output$rf_chart_bar <- ggiraph::renderGirafe({
+    d <- rf_plot_data()
+    if (is.null(d)) return(NULL)
+    yrs    <- sort(unique(d$combined$rel.time))
+    target <- if (10 %in% yrs) 10 else max(yrs[yrs > 0], na.rm = TRUE)
+    render_rf_bar(d$combined, year = target)
+  })
+
+  # Custom HTML table (vs DT) for full design-system control: mono headers,
+  # negatives in red, italic baseline row. See render_rf_table_html() in
+  # R/charts.R.
+  output$rf_table_card <- renderUI({
+    d <- rf_plot_data()
+    if (is.null(d)) {
+      return(div(class = "rf-table-empty", "No RF results yet."))
+    }
+    render_rf_table_html(d$combined)
   })
 
   # Year dropdown for the bar plot (excludes year 0, shows only post-fire years)
