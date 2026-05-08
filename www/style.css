@@ -539,7 +539,12 @@ h6 { font-size: var(--text-base); }
 /* ============================================================
    COMPONENT — Main column wrapper (phase 4b)
    ============================================================ */
-.main-col { display: flex; flex-direction: column; gap: var(--space-6); }
+.main-col { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
+/* Flex items default to min-width:auto, which lets a child with intrinsic
+   wide content (e.g. an over-eager grid row) push the whole column past
+   its parent's bounds — visually breaking siblings like the teaching
+   block out of the page. Force min-width: 0 so children stay confined. */
+.main-col > * { min-width: 0; }
 
 /* ============================================================
    COMPONENT — Page header (phase 4b)
@@ -1623,41 +1628,45 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
    ============================================================ */
 
 .ec-row {
-  display: grid;
-  /* Fixed track widths so the layout doesn't shift between modes:
-     col 1 = meta (flexes), col 2 = effect toggle, col 3 = importance / range.
-     The right column reserves enough width for the importance picker (the
-     wider of the two right-column states) so swapping to min/max inputs
-     under .fx-range doesn't shrink the cell and bump the other columns. */
-  grid-template-columns: minmax(280px, 1fr) 22rem 22rem;
-  gap: var(--space-5);
-  align-items: center;
+  /* Vertical stack: meta info (label + badge) on top, effect toggle in the
+     middle, importance picker (or min/max inputs in Range mode) on the
+     bottom. Avoids the horizontal-overflow trap the previous 3-col grid
+     hit at narrow viewports, and the fixed track widths that were dragging
+     the teaching block out of its container. */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   background: white;
   border: 1px solid var(--border-soft);
   border-left: 4px solid var(--border-soft);
   border-radius: var(--radius-md);
-  padding: var(--space-4) var(--space-5);
-  margin-bottom: var(--space-3);
+  padding: var(--space-5) var(--space-5);
+  margin-bottom: var(--space-5);
   transition: border-color var(--t-fast), background var(--t-fast);
 }
 .ec-row.fx-positive {
-  border-left-color: var(--vp-forest-light);
-  background: linear-gradient(to right, rgba(148, 176, 149, 0.08), white 12%);
+  border-right-color: var(--vp-forest-light);
+  border-right-width: thick;
+  background: linear-gradient(to left, rgba(148, 176, 149, 0.08), white 12%);
 }
 .ec-row.fx-negative {
-  border-left-color: var(--vp-danger);
-  background: linear-gradient(to right, rgba(168, 52, 30, 0.06), white 12%);
+  border-right-color: var(--vp-danger);
+  border-right-width: thick;
+  background: linear-gradient(to left, rgba(168, 52, 30, 0.06), white 12%);
 }
 .ec-row.fx-range {
-  border-left-color: var(--vp-orange);
-  background: linear-gradient(to right, var(--vp-orange-tint), white 18%);
+  border-right-color: var(--vp-orange);
+  border-right-width: thick;
+  background: linear-gradient(to left, var(--vp-orange-tint), white 18%);
 }
 
 /* ── Left column: title + subcategory badge + conditional range stats ── */
 .ec-row-meta {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  flex-direction: row;
+  flex-wrap: wrap;        /* lets the stats line drop to a new row in fx-range */
+  align-items: center;
+  gap: var(--space-3);
   min-width: 0;
 }
 .ec-row-title {
@@ -1678,14 +1687,18 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   padding: 0.125rem 0.5rem;
   border-radius: var(--radius-xs);
 }
-/* Range stats text — only shown when fx-range is active. */
+/* Range stats text — only shown when fx-range is active. Now lives at the
+   bottom of the .ec-row (sibling, not nested in meta), so it sits below the
+   min/max range inputs as context for what bounds the user is setting.
+   Left padding matches the label width so the values visually align with
+   the input fields above. */
 .ec-row-stats {
   display: none;
+  padding-left: 7rem;
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   color: var(--vp-ink-light);
   letter-spacing: 0.04em;
-  margin-top: var(--space-1);
 }
 .ec-row.fx-range .ec-row-stats { display: block; }
 .ec-row-stats .stat-num {
@@ -1700,7 +1713,21 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
 /* ── Middle column: effect toggle (POS / NEG / RANGE) ────────────── */
 .ec-effect-toggle {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
+}
+/* Shared label rule for effect + importance + range rows — same min-width
+   keeps the control buttons / inputs starting at the same x-position
+   across all three control rows. */
+.ec-effect-label,
+.ec-importance-label,
+.ec-range-row-label {
+  min-width: 7rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--vp-ink-light);
 }
 .ec-effect-btn {
   /* Fixed min-width so all three buttons are the same size regardless of
@@ -1755,13 +1782,8 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
 }
 .ec-row.fx-range .ec-importance-picker { display: none; }
 
-.ec-importance-label {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.10em;
-  color: var(--vp-ink-light);
-}
+/* .ec-importance-label styling lives in the shared rule above with
+   .ec-effect-label so both labels match width + typography. */
 .ec-importance-buttons {
   display: inline-flex;
   align-items: stretch;
