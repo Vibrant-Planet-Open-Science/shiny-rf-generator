@@ -92,22 +92,71 @@ S3_TMIDS_PREFIX   <- s3_path("rshiny-spatial-data", "filtered_tmids_by_county")
 # to skip request signing, so co-authors don't need AWS credentials.
 S3_REGION <- "us-west-2"
 
+# Empty key/secret tells aws.s3 to skip AWS Signature V4 signing entirely
+# and make the request as anonymous. vp-open-science is a public bucket;
+# any signed request will be rejected with 403 if the credentials in the
+# default chain (env vars / ~/.aws/credentials / IAM role) don't have
+# explicit access to this bucket. Most contributors won't.
+S3_KEY    <- ""
+S3_SECRET <- ""
+
+# Both helpers wrap the aws.s3 call in a small retry loop. Why: even on a
+# healthy network, individual IPs in the AWS S3 us-west-2 pool can be
+# transiently unreachable from residential ISPs. Retrying triggers a fresh
+# DNS lookup which usually returns a different IP. 3 attempts handles the
+# typical case; cost when AWS is healthy is zero (first try succeeds).
+#
+# Note: a dual-stack base_url override (s3.dualstack.us-west-2.amazonaws.com)
+# was tested as a workaround for an IPv4 routing outage on 2026-05-11, but
+# turned out to interact badly with aws.s3's URL construction for unsigned
+# requests. Removed; if IPv4 routing degrades again, prefer fixing the
+# network (router reboot, DNS flush) over re-introducing base_url here.
+S3_MAX_TRIES <- 3
+
 s3_read_rds <- function(object) {
-  aws.s3::s3readRDS(
-    object = object,
-    bucket = S3_BUCKET,
-    region = S3_REGION#,
-    #key    = "",
-    #secret = ""
-  )
+  last_err <- NULL
+  for (i in seq_len(S3_MAX_TRIES)) {
+    result <- tryCatch(
+      aws.s3::s3readRDS(
+        object = object,
+        bucket = S3_BUCKET,
+        region = S3_REGION,
+        key    = S3_KEY,
+        secret = S3_SECRET
+      ),
+      error = function(e) e
+    )
+    if (!inherits(result, "error")) return(result)
+    last_err <- result
+    if (i < S3_MAX_TRIES) {
+      message(sprintf("S3 read failed (attempt %d/%d): %s -- retrying...",
+                      i, S3_MAX_TRIES, conditionMessage(result)))
+      Sys.sleep(1)
+    }
+  }
+  stop(last_err)
 }
 
 s3_list_bucket <- function(prefix) {
-  aws.s3::get_bucket(
-    bucket = S3_BUCKET,
-    prefix = prefix,
-    region = S3_REGION#,
-    #key    = "",
-    #secret = ""
-  )
+  last_err <- NULL
+  for (i in seq_len(S3_MAX_TRIES)) {
+    result <- tryCatch(
+      aws.s3::get_bucket(
+        bucket = S3_BUCKET,
+        prefix = prefix,
+        region = S3_REGION,
+        key    = S3_KEY,
+        secret = S3_SECRET
+      ),
+      error = function(e) e
+    )
+    if (!inherits(result, "error")) return(result)
+    last_err <- result
+    if (i < S3_MAX_TRIES) {
+      message(sprintf("S3 list failed (attempt %d/%d): %s -- retrying...",
+                      i, S3_MAX_TRIES, conditionMessage(result)))
+      Sys.sleep(1)
+    }
+  }
+  stop(last_err)
 }
