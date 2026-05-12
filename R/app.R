@@ -2782,29 +2782,33 @@ server <- function(input, output, session) {
       dplyr::rename(Scenario = MgmtID, Year = rel.time)
   })
 
-  # Populate the year dropdown from available display years
+  # Populate the year dropdown from available display years.
+  # Reads tbl$Year (renamed from rel.time in rf_table_wide). If the rename
+  # is reverted per Kat's feedback, flip back to tbl$rel.time.
   observe({
     tbl <- rf_table_wide()
     if (is.null(tbl)) return()
-    yrs <- sort(unique(tbl$rel.time))
+    yrs <- sort(unique(tbl$Year))
     updateSelectInput(session, "rf_year_filter",
                       choices  = c("All", yrs),
                       selected = "All")
   })
 
-  # Apply year filter to the table
+  # Apply year filter to the table. Same Year/rel.time dependency note
+  # applies as the observe block above.
   filtered_rf_tbl <- reactive({
     tbl <- rf_table_wide()
     if (is.null(tbl)) return(data.frame(Message = "No RF results yet"))
     yr <- input$rf_year_filter
     if (is.null(yr) || yr == "All") return(tbl)
-    tbl |> dplyr::filter(rel.time == as.numeric(yr))
+    tbl |> dplyr::filter(Year == as.numeric(yr))
   })
 
   # Per-EC RF breakdown — class drops the "stripe" so the alternating-row
   # tint goes away (matches the design-system look). Negatives in the EC and
   # Combined value columns get the danger color via styleInterval (skips
-  # MgmtID and rel.time which aren't RF values).
+  # Scenario and Year which aren't RF values; renamed from MgmtID/rel.time
+  # in rf_table_wide() pending Kat sign-off).
   output$rf_preview_table <- DT::renderDataTable({
     tbl <- filtered_rf_tbl()
     if (is.null(tbl) || ncol(tbl) < 2) {
