@@ -997,7 +997,7 @@ server <- function(input, output, session) {
       # `open = NA` produces the bare HTML `open` attribute (default-open).
       # The "Don't show again" button is visual scaffold for now —
       # cookie/localStorage persistence is a future polish pass.
-      tags$details(class = "teaching-block", open = NA,
+      tags$details(class = "teaching-block",
         tags$summary(class = "teaching-summary",
           tags$span(class = "teaching-eyebrow", "First time here?"),
           tags$span(class = "teaching-headline",
@@ -1208,7 +1208,7 @@ server <- function(input, output, session) {
       ),
 
       # ── Teaching block (default open on first visit) ─────────────────────
-      tags$details(class = "teaching-block", open = NA,
+      tags$details(class = "teaching-block",
         tags$summary(class = "teaching-summary",
           tags$span(class = "teaching-eyebrow", "Stand-level vs species-specific \u2014 which fits?"),
           tags$span(class = "teaching-headline",
@@ -1302,7 +1302,7 @@ server <- function(input, output, session) {
       ),
 
       # ── Teaching block (default open on first visit) ─────────────────────
-      tags$details(class = "teaching-block", open = NA,
+      tags$details(class = "teaching-block",
         tags$summary(class = "teaching-summary",
           tags$span(class = "teaching-eyebrow", "What's an EC?"),
           tags$span(class = "teaching-headline",
@@ -1390,7 +1390,7 @@ server <- function(input, output, session) {
       ),
 
       # ── Teaching block (default open on first visit) ─────────────────────
-      tags$details(class = "teaching-block", open = NA,
+      tags$details(class = "teaching-block",
         tags$summary(class = "teaching-summary",
           tags$span(class = "teaching-eyebrow", "How weighting works"),
           tags$span(class = "teaching-headline",
@@ -2739,12 +2739,27 @@ server <- function(input, output, session) {
   # Capped at MAX_DISPLAY_YEAR via rf_plot_data(); downloads keep all years.
 
   # Build the wide table from rf_plot_data (already capped at MAX_DISPLAY_YEAR)
+  #
+  # ── COLUMN RENAME — pending Kat sign-off ────────────────────────────────
+  # The raw column headers from the FVS pipeline (e.g. "Stratum_1_Crown_Cover",
+  # "QMD", "Surface_Herb", "MgmtID", "rel.time") are domain-precise but hard
+  # to read for non-FVS-fluent reviewers. We swap them to the friendly labels
+  # from R/ec_labels.R for the on-screen Per-EC RF breakdown table; the
+  # downloaded CSV is unaffected (it reads from state$rf_results directly,
+  # NOT from this reactive).
+  #
+  # To revert (e.g. if Kat prefers the raw FVS names for cross-referencing
+  # with her source notebooks): delete the `dplyr::rename(...)` block below
+  # and the `friendly_ec_names` block above it. Also revert the column-name
+  # references in output$rf_preview_table (num_cols uses "Scenario" and
+  # "Year" as exclusions; flip back to "MgmtID" and "rel.time").
+  # ────────────────────────────────────────────────────────────────────────
   rf_table_wide <- reactive({
     d <- rf_plot_data()
     if (is.null(d)) return(NULL)
     wide <- d$per_ec |>
       tidyr::pivot_wider(names_from = EC, values_from = median_rf)
-    wide |>
+    joined <- wide |>
       dplyr::left_join(
         d$combined |>
           dplyr::mutate(Combined = median_combined_rf) |>
@@ -2752,6 +2767,19 @@ server <- function(input, output, session) {
         by = c("MgmtID", "rel.time")
       ) |>
       dplyr::arrange(MgmtID, rel.time)
+
+    # Swap raw FVS column names -> friendly EC labels via ec_labels lookup.
+    # Defensive: only renames columns that exist in ec_labels$column; any
+    # unrecognised EC keeps its raw header so we never drop data.
+    friendly_ec_names <- setNames(ec_labels$label, ec_labels$column)
+    ec_cols_present   <- intersect(names(joined), names(friendly_ec_names))
+    names(joined)[match(ec_cols_present, names(joined))] <-
+      friendly_ec_names[ec_cols_present]
+
+    # Rename the metadata columns too for consistency with the primary RF
+    # table card (which uses "Scenario" as the row identifier).
+    joined |>
+      dplyr::rename(Scenario = MgmtID, Year = rel.time)
   })
 
   # Populate the year dropdown from available display years
@@ -2773,19 +2801,45 @@ server <- function(input, output, session) {
     tbl |> dplyr::filter(rel.time == as.numeric(yr))
   })
 
-  output$rf_preview_table <- DT::renderDataTable(
-    filtered_rf_tbl(),
-    options = list(dom = "tip", searching = FALSE, paging = TRUE,
-                   pageLength = 25, scrollX = TRUE),
-    rownames = FALSE
-  )
+  # Per-EC RF breakdown — class drops the "stripe" so the alternating-row
+  # tint goes away (matches the design-system look). Negatives in the EC and
+  # Combined value columns get the danger color via styleInterval (skips
+  # MgmtID and rel.time which aren't RF values).
+  output$rf_preview_table <- DT::renderDataTable({
+    tbl <- filtered_rf_tbl()
+    if (is.null(tbl) || ncol(tbl) < 2) {
+      return(DT::datatable(data.frame(Message = "No RF results yet"),
+                           options = list(dom = "t"), rownames = FALSE,
+                           class = "compact hover row-border"))
+    }
+    # Excluded names match the renames in rf_table_wide() (Scenario/Year).
+    # If you revert that rename, flip these back to "MgmtID" and "rel.time".
+    num_cols <- setdiff(names(tbl), c("Scenario", "Year"))
+    dt <- DT::datatable(
+      tbl,
+      class    = "compact hover row-border",
+      options  = list(dom = "tip", searching = FALSE, paging = TRUE,
+                      pageLength = 25, scrollX = TRUE),
+      rownames = FALSE
+    )
+    if (length(num_cols) > 0) {
+      dt <- DT::formatStyle(
+        dt,
+        columns = num_cols,
+        color   = DT::styleInterval(c(-0.0001), c("#A8341E", "#14180F"))
+      )
+    }
+    dt
+  })
 
   # ── EC config table (download screen) ──────────────────────────────────
+  # Same "compact hover row-border" class as the per-EC breakdown so both
+  # DT tables share the design-system look.
   output$ec_config_table <- DT::renderDataTable({
     picks <- selected_ecs()
     if (length(picks) == 0) return(data.frame(Message = "No ECs selected"))
     wts <- state$ec_weights; fxs <- state$ec_effects; rngs <- state$ec_ranges
-    ec_labels |>
+    df <- ec_labels |>
       filter(column %in% picks) |>
       dplyr::rowwise() |>
       dplyr::mutate(
@@ -2796,7 +2850,13 @@ server <- function(input, output, session) {
       ) |>
       dplyr::ungroup() |>
       select(EC = label, Category = subcategory, Importance, Effect, Range)
-  }, options = list(dom = 't', pageLength = 50), rownames = FALSE)
+    DT::datatable(
+      df,
+      class    = "compact hover row-border",
+      options  = list(dom = "t", pageLength = 50, scrollX = TRUE),
+      rownames = FALSE
+    )
+  })
 
   # ── Fact sheet preview ─────────────────────────────────────────────────
   output$factsheet_preview <- renderUI({
