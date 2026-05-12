@@ -124,10 +124,24 @@ counties_sf <- sf::st_read(here::here("data", "tl_2024_western_counties.gpkg"), 
 # If ≥50% of AOI counties are in CA, variant = "CA"; otherwise "CR".
 ca_county_geoids <- readRDS(here::here("data", "ca_counties.rds"))$GEOID
 
-# Forest type and structure class lookup — loaded from S3 (~3KB).
-# Used as global fallback for filter checkboxes; the actual choices are
-# narrowed to AOI-specific values when freq_table is available.
-all_vars_codes <- s3_read_rds(S3_ALL_VARS)
+# -----------------------------------------------------------------------------
+# Load bundled lookup table
+# -----------------------------------------------------------------------------
+# Was: all_vars_codes <- s3_read_rds(S3_ALL_VARS)
+# Bundled locally to eliminate startup S3 dependency. The file is small
+# (~2 KB) and stable; refresh by re-running the aws s3 cp command in
+# data/README.md if Kat's upstream pipeline regenerates it.
+# Source: s3://vp-open-science/biodiversity/habitat-suitability/response_function_data/conus/v0.0.0/rshiny-spatial-data/all_vars_codes.rds
+all_vars_path <- here::here("data", "all_vars_codes.rds")
+
+if (!file.exists(all_vars_path)) {
+  stop(sprintf(
+    "Bundled file missing: %s\n  Working dir: %s\n  This file should ship with the app. Check the deployment manifest.",
+    all_vars_path, getwd()
+  ))
+}
+
+all_vars_codes <- readRDS(all_vars_path)
 
 forest_types <- all_vars_codes |>
   dplyr::filter(variable == "ForTyp") |>
