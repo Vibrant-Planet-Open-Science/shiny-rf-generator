@@ -539,7 +539,12 @@ h6 { font-size: var(--text-base); }
 /* ============================================================
    COMPONENT — Main column wrapper (phase 4b)
    ============================================================ */
-.main-col { display: flex; flex-direction: column; gap: var(--space-6); }
+.main-col { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
+/* Flex items default to min-width:auto, which lets a child with intrinsic
+   wide content (e.g. an over-eager grid row) push the whole column past
+   its parent's bounds — visually breaking siblings like the teaching
+   block out of the page. Force min-width: 0 so children stay confined. */
+.main-col > * { min-width: 0; }
 
 /* ============================================================
    COMPONENT — Page header (phase 4b)
@@ -1623,41 +1628,45 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
    ============================================================ */
 
 .ec-row {
-  display: grid;
-  /* Fixed track widths so the layout doesn't shift between modes:
-     col 1 = meta (flexes), col 2 = effect toggle, col 3 = importance / range.
-     The right column reserves enough width for the importance picker (the
-     wider of the two right-column states) so swapping to min/max inputs
-     under .fx-range doesn't shrink the cell and bump the other columns. */
-  grid-template-columns: minmax(280px, 1fr) 22rem 22rem;
-  gap: var(--space-5);
-  align-items: center;
+  /* Vertical stack: meta info (label + badge) on top, effect toggle in the
+     middle, importance picker (or min/max inputs in Range mode) on the
+     bottom. Avoids the horizontal-overflow trap the previous 3-col grid
+     hit at narrow viewports, and the fixed track widths that were dragging
+     the teaching block out of its container. */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   background: white;
   border: 1px solid var(--border-soft);
   border-left: 4px solid var(--border-soft);
   border-radius: var(--radius-md);
-  padding: var(--space-4) var(--space-5);
-  margin-bottom: var(--space-3);
+  padding: var(--space-5) var(--space-5);
+  margin-bottom: var(--space-5);
   transition: border-color var(--t-fast), background var(--t-fast);
 }
 .ec-row.fx-positive {
-  border-left-color: var(--vp-forest-light);
-  background: linear-gradient(to right, rgba(148, 176, 149, 0.08), white 12%);
+  border-right-color: var(--vp-forest-light);
+  border-right-width: thick;
+  background: linear-gradient(to left, rgba(148, 176, 149, 0.08), white 12%);
 }
 .ec-row.fx-negative {
-  border-left-color: var(--vp-danger);
-  background: linear-gradient(to right, rgba(168, 52, 30, 0.06), white 12%);
+  border-right-color: var(--vp-danger);
+  border-right-width: thick;
+  background: linear-gradient(to left, rgba(168, 52, 30, 0.06), white 12%);
 }
 .ec-row.fx-range {
-  border-left-color: var(--vp-orange);
-  background: linear-gradient(to right, var(--vp-orange-tint), white 18%);
+  border-right-color: var(--vp-orange);
+  border-right-width: thick;
+  background: linear-gradient(to left, var(--vp-orange-tint), white 18%);
 }
 
 /* ── Left column: title + subcategory badge + conditional range stats ── */
 .ec-row-meta {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  flex-direction: row;
+  flex-wrap: wrap;        /* lets the stats line drop to a new row in fx-range */
+  align-items: center;
+  gap: var(--space-3);
   min-width: 0;
 }
 .ec-row-title {
@@ -1678,14 +1687,18 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   padding: 0.125rem 0.5rem;
   border-radius: var(--radius-xs);
 }
-/* Range stats text — only shown when fx-range is active. */
+/* Range stats text — only shown when fx-range is active. Now lives at the
+   bottom of the .ec-row (sibling, not nested in meta), so it sits below the
+   min/max range inputs as context for what bounds the user is setting.
+   Left padding matches the label width so the values visually align with
+   the input fields above. */
 .ec-row-stats {
   display: none;
+  padding-left: 7rem;
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   color: var(--vp-ink-light);
   letter-spacing: 0.04em;
-  margin-top: var(--space-1);
 }
 .ec-row.fx-range .ec-row-stats { display: block; }
 .ec-row-stats .stat-num {
@@ -1700,7 +1713,21 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
 /* ── Middle column: effect toggle (POS / NEG / RANGE) ────────────── */
 .ec-effect-toggle {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
+}
+/* Shared label rule for effect + importance + range rows — same min-width
+   keeps the control buttons / inputs starting at the same x-position
+   across all three control rows. */
+.ec-effect-label,
+.ec-importance-label,
+.ec-range-row-label {
+  min-width: 7rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--vp-ink-light);
 }
 .ec-effect-btn {
   /* Fixed min-width so all three buttons are the same size regardless of
@@ -1755,13 +1782,8 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
 }
 .ec-row.fx-range .ec-importance-picker { display: none; }
 
-.ec-importance-label {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.10em;
-  color: var(--vp-ink-light);
-}
+/* .ec-importance-label styling lives in the shared rule above with
+   .ec-effect-label so both labels match width + typography. */
 .ec-importance-buttons {
   display: inline-flex;
   align-items: stretch;
@@ -1859,15 +1881,319 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   border-radius: var(--radius-md);
 }
 
-/* ── Responsive: stack the row vertically on narrow viewports. ──── */
-@media (max-width: 960px) {
-  .ec-row {
-    grid-template-columns: 1fr;
-    row-gap: var(--space-4);
-  }
-  .ec-effect-toggle,
-  .ec-importance-picker,
-  .ec-range-inputs {
-    justify-content: flex-start;
-  }
+/* Effect toggle, importance picker, and range inputs all align to the
+   left of their stacked row (no longer pinned to a grid track edge). */
+.ec-effect-toggle,
+.ec-importance-picker,
+.ec-range-inputs {
+  justify-content: flex-start;
+}
+
+/* Subtle separator between the meta block and the controls so the eye
+   can find the boundary without the row feeling busy. */
+.ec-row-meta {
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-faint);
+}
+
+
+/* ============================================================
+   COMPONENT — Output card chrome (page 07 — Review & download)
+   Both the chart card and the table card share the same outer
+   shell: bordered, rounded, header strip with overline + title,
+   body fills below.
+   ============================================================ */
+
+.output-card {
+  background: white;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-5);
+  overflow: hidden;
+}
+.output-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  background: var(--vp-paper-warm);
+  border-bottom: 1px solid var(--border-soft);
+}
+.output-card-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+.output-card-overline {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--vp-orange-deep);
+}
+.output-card-title {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--vp-ink);
+}
+.output-card-title em {
+  font-weight: 400;
+  font-style: italic;
+  color: var(--vp-ink-mid);
+}
+.output-card-body {
+  padding: var(--space-5);
+  background: var(--vp-paper);
+}
+
+
+/* ── Chart-view toggle (TIME SERIES / BAR · T10) ──────────────── */
+.chart-toggle {
+  display: inline-flex;
+  background: var(--vp-paper);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.chart-toggle-btn {
+  padding: 0.4375rem var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: transparent;
+  border: none;
+  color: var(--vp-ink-light);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.chart-toggle-btn + .chart-toggle-btn {
+  border-left: 1px solid var(--border-soft);
+}
+.chart-toggle-btn:hover { color: var(--vp-ink); }
+.chart-toggle-btn.is-selected {
+  background: var(--vp-forest-deep);
+  color: white;
+}
+
+
+/* ── Chart container — sits inside .output-card-body for the chart card */
+.rf-chart-container {
+  width: 100%;
+}
+.rf-chart-container .girafe_container_std {
+  width: 100% !important;
+}
+
+/* Year picker row that appears above the bar chart only (rendered inside
+   rf_chart_swap when chart_view == 'bar'). Inline label + compact dropdown. */
+.chart-bar-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.chart-bar-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vp-ink-light);
+  margin: 0;
+}
+/* Shiny wraps selectInput in a .form-group with bottom margin; kill it here
+   so the dropdown sits on the same baseline as the label. */
+.chart-bar-controls .form-group {
+  margin-bottom: 0;
+}
+
+
+/* ── RF values table ─────────────────────────────────────────── */
+/* Scroll wrapper — the parent .output-card has overflow:hidden, so when
+   the table is wider than the card (lots of timestep columns or narrow
+   viewport), wrap it in this so it can scroll horizontally instead of
+   getting clipped. */
+.rf-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+.rf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+.rf-table-th {
+  padding: var(--space-3) var(--space-4);
+  text-align: right;
+  font-weight: 600;
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vp-ink-light);
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--vp-paper);
+}
+.rf-table-th-scenario {
+  text-align: left;
+}
+.rf-table-row {
+  transition: background var(--t-fast);
+}
+.rf-table-row:hover {
+  background: var(--vp-paper-warm);
+}
+.rf-table-row-baseline {
+  font-style: italic;
+}
+.rf-table-cell {
+  padding: var(--space-3) var(--space-4);
+  text-align: right;
+  color: var(--vp-ink);
+  border-bottom: 1px solid var(--border-faint);
+}
+.rf-table-cell-scenario {
+  text-align: left;
+  font-weight: 500;
+}
+.rf-table-neg {
+  color: var(--vp-danger);
+}
+.rf-table-zero {
+  color: var(--vp-ink-light);
+}
+.rf-table-na {
+  color: var(--vp-ink-faint);
+  text-align: center;
+}
+.rf-table-empty {
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--vp-ink-light);
+  font-style: italic;
+}
+
+
+/* ============================================================
+   COMPONENT — Collapsible details card (page 07 — EC config + Fact sheet)
+   Re-uses the <details>/<summary> pattern from .teaching-block but with
+   a more neutral style (no orange accent). Stack below the table card.
+   ============================================================ */
+
+.details-card {
+  background: white;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+  overflow: hidden;
+}
+.details-card[open] {
+  border-color: var(--border-medium);
+}
+.details-card-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--vp-ink-mid);
+  transition: background var(--t-fast);
+}
+.details-card-summary::-webkit-details-marker { display: none; }
+.details-card-summary:hover {
+  background: var(--vp-paper-warm);
+}
+.details-card-chevron {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  color: var(--vp-ink-light);
+  transition: transform var(--t-fast);
+}
+.details-card-chevron::before {
+  content: "+";
+}
+.details-card[open] .details-card-chevron::before {
+  content: "\2212";  /* minus */
+}
+.details-card-body {
+  padding: var(--space-5);
+  border-top: 1px solid var(--border-faint);
+  background: var(--vp-paper);
+}
+
+/* ── DT tables inside .details-card — match the design-system .rf-table ──
+   Lots of !important overrides because DT injects inline styles on render
+   and includes its own stylesheet with high specificity. Scoped to
+   .details-card so the rules don't leak to other DT tables in the app. */
+.details-card .dataTables_wrapper {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--vp-ink);
+}
+.details-card table.dataTable {
+  border-collapse: collapse !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+.details-card table.dataTable thead th {
+  font-family: var(--font-mono) !important;
+  font-size: var(--text-eyebrow) !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vp-ink-light) !important;
+  border-bottom: 1px solid var(--border-soft) !important;
+  border-top: none !important;
+  background: var(--vp-paper) !important;
+  padding: var(--space-3) var(--space-4) !important;
+}
+.details-card table.dataTable tbody td {
+  padding: var(--space-3) var(--space-4) !important;
+  color: var(--vp-ink);
+  border-top: 1px solid var(--border-faint) !important;
+  background: white !important;
+}
+.details-card table.dataTable.row-border tbody tr:hover td,
+.details-card table.dataTable.hover tbody tr:hover td {
+  background: var(--vp-paper-warm) !important;
+}
+/* Neutralize DT's stripe class in case it's applied — keep all rows white. */
+.details-card table.dataTable.stripe tbody tr.odd td,
+.details-card table.dataTable.display tbody tr.odd td {
+  background: white !important;
+}
+/* Pagination + info row */
+.details-card .dataTables_info,
+.details-card .dataTables_paginate {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--vp-ink-light);
+  padding-top: var(--space-3);
+}
+.details-card .dataTables_paginate .paginate_button {
+  border-radius: var(--radius-xs) !important;
+}
+.details-card .dataTables_paginate .paginate_button.current,
+.details-card .dataTables_paginate .paginate_button.current:hover {
+  background: var(--vp-forest-deep) !important;
+  border-color: var(--vp-forest-deep) !important;
+  color: white !important;
+}
+/* Sort arrows tinted to design-system muted */
+.details-card table.dataTable thead .sorting:before,
+.details-card table.dataTable thead .sorting:after,
+.details-card table.dataTable thead .sorting_asc:before,
+.details-card table.dataTable thead .sorting_asc:after,
+.details-card table.dataTable thead .sorting_desc:before,
+.details-card table.dataTable thead .sorting_desc:after {
+  color: var(--vp-ink-faint) !important;
 }

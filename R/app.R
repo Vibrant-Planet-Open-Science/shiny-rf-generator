@@ -32,6 +32,7 @@
 source(here::here("R", "functions.R"))
 source(here::here("R", "ec_labels.R"))
 source(here::here("R", "ec_tooltips.R"))
+source(here::here("R", "charts.R"))
 
 library(shiny)
 library(bslib)
@@ -343,6 +344,16 @@ ui <- fluidPage(
         var v = (raw === '' || raw == null) ? null : parseFloat(raw);
         if (v != null && !isFinite(v)) v = null;
         Shiny.setInputValue('rng_' + kind + '_' + safeId, v, {priority: 'event'});
+      }
+
+      // ── Page 07 — chart view toggle (TIME SERIES / BAR · T10).
+      // Selected button gets .is-selected; sets input$chart_view which the
+      // server-side renderUI reads to swap between ggiraph time-series and bar.
+      function selectChartView(view) {
+        document.querySelectorAll('.chart-toggle-btn').forEach(function(btn) {
+          btn.classList.toggle('is-selected', btn.dataset.view === view);
+        });
+        Shiny.setInputValue('chart_view', view, {priority: 'event'});
       }
     "))
 
@@ -986,7 +997,7 @@ server <- function(input, output, session) {
       # `open = NA` produces the bare HTML `open` attribute (default-open).
       # The "Don't show again" button is visual scaffold for now —
       # cookie/localStorage persistence is a future polish pass.
-      tags$details(class = "teaching-block", open = NA,
+      tags$details(class = "teaching-block",
         tags$summary(class = "teaching-summary",
           tags$span(class = "teaching-eyebrow", "First time here?"),
           tags$span(class = "teaching-headline",
@@ -1027,7 +1038,7 @@ server <- function(input, output, session) {
           tabPanel("Map",
             div(class = "map-card-meta",
               div(class = "map-card-overline",
-                  "RESOLVE 2017 ecoregions \u00b7 click to select"),
+                  "RESOLVE 2017 ecoregions \u00b7"),
               div(class = "map-card-help",
                   "click to select \u00b7 click again to remove")
             ),
@@ -1197,7 +1208,7 @@ server <- function(input, output, session) {
       ),
 
       # ── Teaching block (default open on first visit) ─────────────────────
-      tags$details(class = "teaching-block", open = NA,
+      tags$details(class = "teaching-block",
         tags$summary(class = "teaching-summary",
           tags$span(class = "teaching-eyebrow", "Stand-level vs species-specific \u2014 which fits?"),
           tags$span(class = "teaching-headline",
@@ -1235,7 +1246,7 @@ server <- function(input, output, session) {
         column(6, div(class = cls_stand,
           onclick = "Shiny.setInputValue('pick_rftype', 'stand', {priority: 'event'});",
           div(class = "section-label", "Stand-level"),
-          h2(tags$strong("Whole-stand"), " ", tags$em("metrics.")),
+          h2(tags$strong("Whole stand"), " ", tags$em("metrics.")),
           p("Canopy cover, structure, fuels, snag density. The forest as a system."),
           div(class = "chip-grid",
             tags$span(class = "chip", "Canopy cover"),
@@ -1291,7 +1302,7 @@ server <- function(input, output, session) {
       ),
 
       # ── Teaching block (default open on first visit) ─────────────────────
-      tags$details(class = "teaching-block", open = NA,
+      tags$details(class = "teaching-block",
         tags$summary(class = "teaching-summary",
           tags$span(class = "teaching-eyebrow", "What's an EC?"),
           tags$span(class = "teaching-headline",
@@ -1379,7 +1390,7 @@ server <- function(input, output, session) {
       ),
 
       # ── Teaching block (default open on first visit) ─────────────────────
-      tags$details(class = "teaching-block", open = NA,
+      tags$details(class = "teaching-block",
         tags$summary(class = "teaching-summary",
           tags$span(class = "teaching-eyebrow", "How weighting works"),
           tags$span(class = "teaching-headline",
@@ -1437,13 +1448,18 @@ server <- function(input, output, session) {
 
     stats <- ec_range_stats(state$filtered_data, col)
 
-    # Saved state (back-nav) — NULL on first visit.
+    # Saved state (back-nav) — NULL on first visit. Default the effect to
+    # "Positive" so each row arrives with a sensible pick (matches the
+    # majority case in workshops); user can flip to NEG or RANGE freely.
     saved_fx  <- isolate(input[[paste0("fx_", safe)]])
     saved_wt  <- isolate(input[[paste0("wt_", safe)]]) %||% 3L
     saved_min <- isolate(input[[paste0("rng_min_", safe)]])
     saved_max <- isolate(input[[paste0("rng_max_", safe)]])
 
-    fx_class <- switch(saved_fx %||% "",
+    needs_default_fx <- is.null(saved_fx)
+    if (needs_default_fx) saved_fx <- "Positive"
+
+    fx_class <- switch(saved_fx,
                        "Positive" = "fx-positive",
                        "Negative" = "fx-negative",
                        "Range"    = "fx-range",
@@ -1454,23 +1470,22 @@ server <- function(input, output, session) {
 
     div(class = paste("ec-row", fx_class), id = paste0("ecrow_", safe),
 
-      # ── Meta column ──────────────────────────────────────────────────────
+      # Push the "Positive" default to Shiny on first render of this row so
+      # input$fx_<safe> is non-null (the footer "X of Y ECs set" check reads
+      # it). Skipped on back-nav when the user already has a saved value.
+      if (needs_default_fx) tags$script(HTML(sprintf(
+        "Shiny.setInputValue('fx_%s', 'Positive', {priority: 'event'});", safe
+      ))),
+
+      # ── Meta row: title + subcategory badge inline ───────────────────────
       div(class = "ec-row-meta",
         div(class = "ec-row-title", lbl),
-        tags$span(class = "ec-row-badge", toupper(cat)),
-        # Stats line — display:none unless .fx-range is on the row.
-        div(class = "ec-row-stats",
-          tags$span(class = "stat-num", fmt_stat(stats$min)), unit_suffix,
-          tags$span(class = "stat-sep", "—"),
-          tags$span(class = "stat-num", fmt_stat(stats$max)), unit_suffix,
-          tags$span(class = "stat-sep", "·"),
-          "med ",
-          tags$span(class = "stat-num", fmt_stat(stats$median)), unit_suffix
-        )
+        tags$span(class = "ec-row-badge", toupper(cat))
       ),
 
       # ── Effect toggle (POS / NEG / RANGE) ───────────────────────────────
       div(class = "ec-effect-toggle",
+        tags$span(class = "ec-effect-label", "Effect"),
         lapply(c("Positive", "Negative", "Range"), function(eff) {
           icon  <- switch(eff, "Positive" = "↗", "Negative" = "↘", "Range" = "∧")
           label <- switch(eff, "Positive" = "POS", "Negative" = "NEG", "Range" = "RANGE")
@@ -1503,7 +1518,10 @@ server <- function(input, output, session) {
       ),
 
       # ── Right column B: min/max inputs (visible only when fx-range) ─────
+      # Leading "Range" row label (shared 7rem width with Effect / Importance)
+      # so the inputs start at the same x as the buttons in those rows.
       div(class = "ec-range-inputs",
+        tags$span(class = "ec-range-row-label", "Range"),
         tags$span(class = "ec-range-label", "Min"),
         tags$input(type = "number",
           class = "ec-range-input",
@@ -1519,6 +1537,17 @@ server <- function(input, output, session) {
           oninput = sprintf("pushEcRange('%s', 'max', this.value);", safe)
         ),
         if (nzchar(unit)) tags$span(class = "ec-range-unit", unit)
+      ),
+
+      # ── Stats line: range + median, only visible in fx-range mode. ───────
+      # Sits below the min/max inputs as context for what bounds to set.
+      div(class = "ec-row-stats",
+        tags$span(class = "stat-num", fmt_stat(stats$min)), unit_suffix,
+        tags$span(class = "stat-sep", "—"),
+        tags$span(class = "stat-num", fmt_stat(stats$max)), unit_suffix,
+        tags$span(class = "stat-sep", "·"),
+        "med ",
+        tags$span(class = "stat-num", fmt_stat(stats$median)), unit_suffix
       )
     )
   }
@@ -1526,67 +1555,148 @@ server <- function(input, output, session) {
 
 
   # ── Screen 8: Review & download ────────────────────────────────────────
-  # Three tabs: RF outputs (bar + timeseries plots + table), EC config, fact sheet.
-  # Four download buttons: RF CSV, EC config CSV, fact sheet MD, zip of all three.
+  # Editorial chrome (header + chart card + table card + collapsible details
+  # for EC config and Fact sheet). Charts use ggiraph for pixel-match with
+  # the design mockup; table is custom HTML for full styling control.
+  # Download row is the existing v0.1 button strip — slated for its own
+  # design pass. EC config and Fact sheet sections retain the existing DT
+  # / uiOutput renderers, just wrapped in <details> cards.
   render_download <- function() {
-    nm      <- input$hvra_name %||% "Unnamed HVRA"
-    sci     <- input$hvra_sci %||% ""
+    nm       <- input$hvra_name %||% "Unnamed HVRA"
+    sci      <- input$hvra_sci  %||% ""
     name_str <- if (nzchar(sci)) paste0(nm, " (", sci, ")") else nm
-    div(class = "card",
-        h2("Review & download"),
-        p(name_str, class = "subtitle"),
-        tabsetPanel(type = "tabs",
-                    # -- RF outputs tab: plotly bar + timeseries, then data table --
-                    tabPanel("RF outputs",
-                             div(style = "padding:20px 0;",
-                                 tabsetPanel(id = "rf_plot_tabs", type = "pills",
-                                   tabPanel("Bar plot",
-                                     div(style = "padding:12px 0;",
-                                         fluidRow(
-                                           column(4, uiOutput("rf_year_selector")),
-                                           column(8)
-                                         ),
-                                         plotly::plotlyOutput("rf_bar_plot", height = "350px")
-                                     )
-                                   ),
-                                   tabPanel("Time series",
-                                     div(style = "padding:12px 0;",
-                                         plotly::plotlyOutput("rf_ts_plot", height = "400px")
-                                     )
-                                   )
-                                 ),
-                                 tags$hr(),
-                                 tags$details(class = "details-wrap",
-                                   tags$summary("RF table"),
-                                   div(style = "padding-top:12px;",
-                                       selectInput("rf_year_filter", label = "View year:",
-                                                   choices = NULL, selected = "All",
-                                                   width = "150px"),
-                                       DT::dataTableOutput("rf_preview_table")
-                                   )
-                                 )
-                             )
-                    ),
-                    # -- EC configuration tab --
-                    tabPanel("EC configuration",
-                             div(style = "padding:20px 0;", DT::dataTableOutput("ec_config_table"))
-                    ),
-                    # -- Fact sheet preview tab --
-                    tabPanel("Fact sheet",
-                             div(style = "padding:20px 0;", uiOutput("factsheet_preview"))
-                    )
+
+    div(class = "main-col",
+
+      # ── Page header ──────────────────────────────────────────────────────
+      div(class = "page-header",
+        div(class = "page-header-numeral", "07"),
+        div(class = "page-header-overline",
+          tags$span(class = "page-header-step", "Export"),
+          tags$span("· Download")
         ),
-        # Download buttons row
-        div(style = "margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;",
-            downloadButton("dl_rf",        "RF outputs (CSV)",     class = "btn btn-outline-secondary"),
-            downloadButton("dl_ec",        "EC config (CSV)",      class = "btn btn-outline-secondary"),
-            downloadButton("dl_factsheet", "Fact sheet (md)",      class = "btn btn-outline-secondary"),
-            downloadButton("dl_all",       "Download all (zip)",   class = "btn btn-primary")
+        h1(tags$strong("Your RF"), " ", tags$em("is ready.")),
+        p("The weighted response function for ", tags$strong(name_str),
+          " across six wildfire intensity classes. ",
+          "Toggle to a year-10 snapshot, scan the table, download the data.")
+      ),
+
+      # ── Chart card (toggle + ggiraph chart) ──────────────────────────────
+      div(class = "output-card",
+        div(class = "output-card-header",
+          div(class = "output-card-header-text",
+            tags$span(class = "output-card-overline", "WEIGHTED RF"),
+            tags$span(class = "output-card-title",
+              tags$strong("Response"), " ", tags$em("by wildfire intensity"))
+          ),
+          # Chart-view toggle (TIME SERIES / BAR) — wired by selectChartView JS.
+          # Year picker for the bar view lives inside rf_chart_swap so it
+          # appears only when the user toggles to bar.
+          div(class = "chart-toggle",
+            tags$button(type = "button",
+              class = "chart-toggle-btn is-selected",
+              `data-view` = "timeseries",
+              onclick = "selectChartView('timeseries');",
+              "Time series"),
+            tags$button(type = "button",
+              class = "chart-toggle-btn",
+              `data-view` = "bar",
+              onclick = "selectChartView('bar');",
+              "Bar")
+          )
         ),
-        div(class = "navbar",
-            actionButton("btn_back",  "\u2190 Back",          class = "btn btn-outline-secondary btn-lg"),
-            actionButton("btn_reset", "Start a new RF", class = "btn btn-outline-danger btn-lg")
+        div(class = "output-card-body",
+          div(class = "rf-chart-container",
+            uiOutput("rf_chart_swap")
+          )
         )
+      ),
+
+      # ── Table card (RF values at every t-step) ───────────────────────────
+      div(class = "output-card",
+        div(class = "output-card-header",
+          div(class = "output-card-header-text",
+            tags$span(class = "output-card-overline", "TABULAR OUTPUT"),
+            tags$span(class = "output-card-title",
+              tags$strong("RF values"), " ", tags$em("at every t-step"))
+          )
+        ),
+        div(class = "output-card-body",
+          uiOutput("rf_table_card")
+        )
+      ),
+
+      # ── Collapsible: per-EC RF breakdown ─────────────────────────────────
+      # The wide table from v0.1: one row per MgmtID x rel.time, with one
+      # column per picked EC plus the Combined column. Year filter dropdown
+      # narrows to a single relative-year if needed. Reactives behind this
+      # (rf_table_wide, filtered_rf_tbl, output$rf_preview_table) are
+      # unchanged from the v0.1 implementation.
+      tags$details(class = "details-card",
+        tags$summary(class = "details-card-summary",
+          tags$span("Per-EC RF breakdown"),
+          tags$span(class = "details-card-chevron")
+        ),
+        div(class = "details-card-body",
+          div(style = "margin-bottom: 0.75rem;",
+            selectInput("rf_year_filter", label = "View year:",
+                        choices = NULL, selected = "All",
+                        width = "150px")
+          ),
+          DT::dataTableOutput("rf_preview_table")
+        )
+      ),
+
+      # ── Collapsible: EC configuration ────────────────────────────────────
+      tags$details(class = "details-card",
+        tags$summary(class = "details-card-summary",
+          tags$span("EC configuration"),
+          tags$span(class = "details-card-chevron")
+        ),
+        div(class = "details-card-body",
+          DT::dataTableOutput("ec_config_table")
+        )
+      ),
+
+      # ── Collapsible: Fact sheet ──────────────────────────────────────────
+      tags$details(class = "details-card",
+        tags$summary(class = "details-card-summary",
+          tags$span("Fact sheet preview"),
+          tags$span(class = "details-card-chevron")
+        ),
+        div(class = "details-card-body",
+          uiOutput("factsheet_preview")
+        )
+      ),
+      # -- Download row (v0.1 placeholder -- slated for its own design pass) --
+      div(class = "download-row-legacy",
+          style = "margin-top: 1.25rem; display: flex; gap: 0.5rem; flex-wrap: wrap;",
+        downloadButton("dl_rf",        "RF outputs (CSV)",   class = "btn btn-outline-secondary"),
+        downloadButton("dl_ec",        "EC config (CSV)",    class = "btn btn-outline-secondary"),
+        downloadButton("dl_factsheet", "Fact sheet (md)",    class = "btn btn-outline-secondary"),
+        downloadButton("dl_all",       "Download all (zip)", class = "btn btn-primary")
+      ),
+
+      # -- Page footer (Back / Start a new RF) --
+      # Matches the .page-footer pattern from pages 02-06: status row + actions
+      # row. The "Start a new RF" button keeps id="btn_reset" so the existing
+      # observer at line ~615 fires (clears all state and returns to AOI).
+      div(class = "page-footer",
+        div(class = "page-footer-status",
+          div(class = "page-footer-status-mark"),
+          tags$span("RF complete \u00b7 download below or start a fresh wizard")
+        ),
+        div(class = "page-footer-actions",
+          tags$button(id = "btn_back", type = "button",
+            class = "btn btn-ghost action-button",
+            tags$span(class = "action-label", "\u2190 Back")
+          ),
+          tags$button(id = "btn_reset", type = "button",
+            class = "btn btn-ghost action-button",
+            tags$span(class = "action-label", "Start a new RF")
+          )
+        )
+      )
     )
   }
 
@@ -2477,6 +2587,82 @@ server <- function(input, output, session) {
     )
   })
 
+
+  # ── Page 07 (Review & download) — new ggiraph chart outputs ──────────
+  # Chart-view toggle (TIME SERIES / BAR · T10) is wired client-side via
+  # selectChartView; here we read input$chart_view and swap which
+  # girafeOutput is rendered. Both renderers read from rf_plot_data().
+
+  output$rf_chart_swap <- renderUI({
+    view <- input$chart_view %||% "timeseries"
+    # height = "auto" lets the container match the SVG's natural aspect ratio
+    # (set by width_svg / height_svg in render_rf_*), so the chart fills its
+    # parent without empty bands top/bottom.
+    if (view == "bar") {
+      # Build the year selector from the available rel.time values (post-
+      # disturbance only — year 0 is the pre-disturbance baseline = all 0s,
+      # not interesting). Preserve the previously selected year across
+      # toggle re-renders via isolate().
+      d <- rf_plot_data()
+      yrs <- if (!is.null(d)) {
+        v <- sort(unique(d$combined$rel.time))
+        v[v > 0]
+      } else {
+        c(1, 5, 10, 15, 20)
+      }
+      prev_year <- isolate(input$bar_year)
+      sel_year  <- if (!is.null(prev_year) && as.numeric(prev_year) %in% yrs)
+                     prev_year
+                   else if (10 %in% yrs) 10
+                   else yrs[1]
+
+      tagList(
+        div(class = "chart-bar-controls",
+          tags$label(class = "chart-bar-label", "Year:"),
+          selectInput("bar_year", NULL,
+            choices  = yrs,
+            selected = sel_year,
+            width    = "90px")
+        ),
+        ggiraph::girafeOutput("rf_chart_bar", height = "auto")
+      )
+    } else {
+      ggiraph::girafeOutput("rf_chart_ts",  height = "auto")
+    }
+  })
+
+  output$rf_chart_ts <- ggiraph::renderGirafe({
+    d <- rf_plot_data()
+    if (is.null(d)) return(NULL)
+    render_rf_timeseries(d$combined)
+  })
+
+  # Bar snapshot — driven by input$bar_year from the dropdown rendered in
+  # rf_chart_swap. Defaults to year 10 when the input is unset (first render
+  # or before the selectInput initializes); falls back to the latest available
+  # post-disturbance year if year 10 isn't in the data.
+  output$rf_chart_bar <- ggiraph::renderGirafe({
+    d <- rf_plot_data()
+    if (is.null(d)) return(NULL)
+    yrs    <- sort(unique(d$combined$rel.time))
+    target <- as.numeric(input$bar_year %||% NA_real_)
+    if (is.na(target) || !(target %in% yrs)) {
+      target <- if (10 %in% yrs) 10 else max(yrs[yrs > 0], na.rm = TRUE)
+    }
+    render_rf_bar(d$combined, year = target)
+  })
+
+  # Custom HTML table (vs DT) for full design-system control: mono headers,
+  # negatives in red, italic baseline row. See render_rf_table_html() in
+  # R/charts.R.
+  output$rf_table_card <- renderUI({
+    d <- rf_plot_data()
+    if (is.null(d)) {
+      return(div(class = "rf-table-empty", "No RF results yet."))
+    }
+    render_rf_table_html(d$combined)
+  })
+
   # Year dropdown for the bar plot (excludes year 0, shows only post-fire years)
   output$rf_year_selector <- renderUI({
     d <- rf_plot_data()
@@ -2553,12 +2739,27 @@ server <- function(input, output, session) {
   # Capped at MAX_DISPLAY_YEAR via rf_plot_data(); downloads keep all years.
 
   # Build the wide table from rf_plot_data (already capped at MAX_DISPLAY_YEAR)
+  #
+  # ── COLUMN RENAME — pending Kat sign-off ────────────────────────────────
+  # The raw column headers from the FVS pipeline (e.g. "Stratum_1_Crown_Cover",
+  # "QMD", "Surface_Herb", "MgmtID", "rel.time") are domain-precise but hard
+  # to read for non-FVS-fluent reviewers. We swap them to the friendly labels
+  # from R/ec_labels.R for the on-screen Per-EC RF breakdown table; the
+  # downloaded CSV is unaffected (it reads from state$rf_results directly,
+  # NOT from this reactive).
+  #
+  # To revert (e.g. if Kat prefers the raw FVS names for cross-referencing
+  # with her source notebooks): delete the `dplyr::rename(...)` block below
+  # and the `friendly_ec_names` block above it. Also revert the column-name
+  # references in output$rf_preview_table (num_cols uses "Scenario" and
+  # "Year" as exclusions; flip back to "MgmtID" and "rel.time").
+  # ────────────────────────────────────────────────────────────────────────
   rf_table_wide <- reactive({
     d <- rf_plot_data()
     if (is.null(d)) return(NULL)
     wide <- d$per_ec |>
       tidyr::pivot_wider(names_from = EC, values_from = median_rf)
-    wide |>
+    joined <- wide |>
       dplyr::left_join(
         d$combined |>
           dplyr::mutate(Combined = median_combined_rf) |>
@@ -2566,6 +2767,19 @@ server <- function(input, output, session) {
         by = c("MgmtID", "rel.time")
       ) |>
       dplyr::arrange(MgmtID, rel.time)
+
+    # Swap raw FVS column names -> friendly EC labels via ec_labels lookup.
+    # Defensive: only renames columns that exist in ec_labels$column; any
+    # unrecognised EC keeps its raw header so we never drop data.
+    friendly_ec_names <- setNames(ec_labels$label, ec_labels$column)
+    ec_cols_present   <- intersect(names(joined), names(friendly_ec_names))
+    names(joined)[match(ec_cols_present, names(joined))] <-
+      friendly_ec_names[ec_cols_present]
+
+    # Rename the metadata columns too for consistency with the primary RF
+    # table card (which uses "Scenario" as the row identifier).
+    joined |>
+      dplyr::rename(Scenario = MgmtID, Year = rel.time)
   })
 
   # Populate the year dropdown from available display years
@@ -2587,19 +2801,45 @@ server <- function(input, output, session) {
     tbl |> dplyr::filter(rel.time == as.numeric(yr))
   })
 
-  output$rf_preview_table <- DT::renderDataTable(
-    filtered_rf_tbl(),
-    options = list(dom = "tip", searching = FALSE, paging = TRUE,
-                   pageLength = 25, scrollX = TRUE),
-    rownames = FALSE
-  )
+  # Per-EC RF breakdown — class drops the "stripe" so the alternating-row
+  # tint goes away (matches the design-system look). Negatives in the EC and
+  # Combined value columns get the danger color via styleInterval (skips
+  # MgmtID and rel.time which aren't RF values).
+  output$rf_preview_table <- DT::renderDataTable({
+    tbl <- filtered_rf_tbl()
+    if (is.null(tbl) || ncol(tbl) < 2) {
+      return(DT::datatable(data.frame(Message = "No RF results yet"),
+                           options = list(dom = "t"), rownames = FALSE,
+                           class = "compact hover row-border"))
+    }
+    # Excluded names match the renames in rf_table_wide() (Scenario/Year).
+    # If you revert that rename, flip these back to "MgmtID" and "rel.time".
+    num_cols <- setdiff(names(tbl), c("Scenario", "Year"))
+    dt <- DT::datatable(
+      tbl,
+      class    = "compact hover row-border",
+      options  = list(dom = "tip", searching = FALSE, paging = TRUE,
+                      pageLength = 25, scrollX = TRUE),
+      rownames = FALSE
+    )
+    if (length(num_cols) > 0) {
+      dt <- DT::formatStyle(
+        dt,
+        columns = num_cols,
+        color   = DT::styleInterval(c(-0.0001), c("#A8341E", "#14180F"))
+      )
+    }
+    dt
+  })
 
   # ── EC config table (download screen) ──────────────────────────────────
+  # Same "compact hover row-border" class as the per-EC breakdown so both
+  # DT tables share the design-system look.
   output$ec_config_table <- DT::renderDataTable({
     picks <- selected_ecs()
     if (length(picks) == 0) return(data.frame(Message = "No ECs selected"))
     wts <- state$ec_weights; fxs <- state$ec_effects; rngs <- state$ec_ranges
-    ec_labels |>
+    df <- ec_labels |>
       filter(column %in% picks) |>
       dplyr::rowwise() |>
       dplyr::mutate(
@@ -2610,7 +2850,13 @@ server <- function(input, output, session) {
       ) |>
       dplyr::ungroup() |>
       select(EC = label, Category = subcategory, Importance, Effect, Range)
-  }, options = list(dom = 't', pageLength = 50), rownames = FALSE)
+    DT::datatable(
+      df,
+      class    = "compact hover row-border",
+      options  = list(dom = "t", pageLength = 50, scrollX = TRUE),
+      rownames = FALSE
+    )
+  })
 
   # ── Fact sheet preview ─────────────────────────────────────────────────
   output$factsheet_preview <- renderUI({
