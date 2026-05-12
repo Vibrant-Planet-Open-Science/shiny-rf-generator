@@ -298,7 +298,7 @@ render_rf_bar <- function(df, year = 10) {
     # Per chart-label rule: geom_text size in mm; 4mm => ~15px nominal,
     # which stays >= 9-10px under typical responsive downscale.
     ggplot2::geom_text(ggplot2::aes(label = label_str, vjust = vjust),
-                       family = "JetBrains Mono", size = 8,
+                       family = "JetBrains Mono", size = 4,
                        color = "#525B4F") +
     ggplot2::scale_fill_manual(values = pal,
                                labels = function(x) toupper(ifelse(x == "BASE", "BASELINE", x))) +
