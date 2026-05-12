@@ -2321,3 +2321,75 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
 .details-card table.dataTable thead .sorting_desc:after {
   color: var(--vp-ink-faint) !important;
 }
+
+/* ── DT styling for the EC contributions table view (page 07) ──────────
+   Mirrors the .details-card DT rules above for the new .ec-contrib-table-wrap
+   context. Same design-system look (mono headers, faint borders, hover,
+   no stripe), without re-scoping the existing rules. */
+.ec-contrib-table-wrap .dataTables_wrapper {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--vp-ink);
+}
+.ec-contrib-table-wrap table.dataTable {
+  border-collapse: collapse !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+.ec-contrib-table-wrap table.dataTable thead th {
+  font-family: var(--font-mono) !important;
+  font-size: var(--text-eyebrow) !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vp-ink-light) !important;
+  border-bottom: 1px solid var(--border-soft) !important;
+  border-top: none !important;
+  background: var(--vp-paper) !important;
+  padding: var(--space-3) var(--space-4) !important;
+}
+.ec-contrib-table-wrap table.dataTable tbody td {
+  padding: var(--space-3) var(--space-4) !important;
+  color: var(--vp-ink);
+  border-top: 1px solid var(--border-faint) !important;
+  background: white !important;
+}
+.ec-contrib-table-wrap table.dataTable.row-border tbody tr:hover td,
+.ec-contrib-table-wrap table.dataTable.hover tbody tr:hover td {
+  background: var(--vp-paper-warm) !important;
+}
+.ec-contrib-table-wrap table.dataTable.stripe tbody tr.odd td,
+.ec-contrib-table-wrap table.dataTable.display tbody tr.odd td {
+  background: white !important;
+}
+.ec-contrib-table-wrap .dataTables_info,
+.ec-contrib-table-wrap .dataTables_paginate {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--vp-ink-light);
+  padding-top: var(--space-3);
+}
+.ec-contrib-table-wrap .dataTables_wrapper .dataTables_paginate .paginate_button {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  padding: 0.25rem 0.625rem;
+  border-radius: var(--radius-xs);
+}
+.ec-contrib-table-wrap .dataTables_paginate .paginate_button.current,
+.ec-contrib-table-wrap .dataTables_paginate .paginate_button.current:hover {
+  background: var(--vp-forest-deep) !important;
+  border-color: var(--vp-forest-deep) !important;
+  color: white !important;
+}
+.ec-contrib-table-wrap table.dataTable thead .sorting:before,
+.ec-contrib-table-wrap table.dataTable thead .sorting:after,
+.ec-contrib-table-wrap table.dataTable thead .sorting_asc:before,
+.ec-contrib-table-wrap table.dataTable thead .sorting_asc:after,
+.ec-contrib-table-wrap table.dataTable thead .sorting_desc:before,
+.ec-contrib-table-wrap table.dataTable thead .sorting_desc:after {
+  color: var(--vp-ink-faint) !important;
+}

@@ -388,6 +388,16 @@ ui <- fluidPage(
         });
         Shiny.setInputValue('chart_view', view, {priority: 'event'});
       }
+
+      // ── Page 07 EC contributions view toggle (Sparklines / Table).
+      // Same pattern as selectChartView; scoped to .ec-view-toggle-btn so
+      // the chart toggle state is independent.
+      function selectEcView(view) {
+        document.querySelectorAll('.ec-view-toggle-btn').forEach(function(btn) {
+          btn.classList.toggle('is-selected', btn.dataset.view === view);
+        });
+        Shiny.setInputValue('ec_view', view, {priority: 'event'});
+      }
     "))
 
 
@@ -1618,7 +1628,7 @@ server <- function(input, output, session) {
         h1(tags$strong("Here's your RF."), " ",
            tags$em("Make sure the science is right.")),
         p("Hero curve, 10-year summary, per-EC contributions, and the full ",
-          "data table. Continue to ", tags$strong("Review & Publish"),
+          "data table. Continue to ", tags$strong("Review & Download"),
           " to add final notes and download.")
       ),
 
@@ -1696,74 +1706,35 @@ server <- function(input, output, session) {
         )
       ),
 
-      # ── Collapsible: per-EC RF breakdown ─────────────────────────────────
-      # The wide table from v0.1: one row per MgmtID x rel.time, with one
-      # column per picked EC plus the Combined column. Year filter dropdown
-      # narrows to a single relative-year if needed. Reactives behind this
-      # (rf_table_wide, filtered_rf_tbl, output$rf_preview_table) are
-      # unchanged from the v0.1 implementation.
-      tags$details(class = "details-card",
-        tags$summary(class = "details-card-summary",
-          tags$span("Per-EC RF breakdown"),
-          tags$span(class = "details-card-chevron")
-        ),
-        div(class = "details-card-body",
-          div(style = "margin-bottom: 0.75rem;",
-            selectInput("rf_year_filter", label = "View year:",
-                        choices = NULL, selected = "All",
-                        width = "150px")
-          ),
-          DT::dataTableOutput("rf_preview_table")
-        )
-      ),
-
-      # ── Collapsible: EC configuration ────────────────────────────────────
-      tags$details(class = "details-card",
-        tags$summary(class = "details-card-summary",
-          tags$span("EC configuration"),
-          tags$span(class = "details-card-chevron")
-        ),
-        div(class = "details-card-body",
-          DT::dataTableOutput("ec_config_table")
-        )
-      ),
-
-      # ── Collapsible: Fact sheet ──────────────────────────────────────────
-      tags$details(class = "details-card",
-        tags$summary(class = "details-card-summary",
-          tags$span("Fact sheet preview"),
-          tags$span(class = "details-card-chevron")
-        ),
-        div(class = "details-card-body",
-          uiOutput("factsheet_preview")
-        )
-      ),
-      # -- Download row (v0.1 placeholder -- slated for its own design pass) --
-      div(class = "download-row-legacy",
-          style = "margin-top: 1.25rem; display: flex; gap: 0.5rem; flex-wrap: wrap;",
-        downloadButton("dl_rf",        "RF outputs (CSV)",   class = "btn btn-outline-secondary"),
-        downloadButton("dl_ec",        "EC config (CSV)",    class = "btn btn-outline-secondary"),
-        downloadButton("dl_factsheet", "Fact sheet (md)",    class = "btn btn-outline-secondary"),
-        downloadButton("dl_all",       "Download all (zip)", class = "btn btn-primary")
-      ),
-
-      # -- Page footer (Back / Start a new RF) --
-      # Matches the .page-footer pattern from pages 02-06: status row + actions
-      # row. The "Start a new RF" button keeps id="btn_reset" so the existing
-      # observer at line ~615 fires (clears all state and returns to AOI).
+      # -- Page footer (Back to weights / Review & Download) --
+      # Per the design handoff, page 07 is now Outputs only -- no form, no
+      # downloads. The three collapsible details cards (Per-EC breakdown,
+      # EC configuration, Fact sheet preview) and the legacy download row
+      # all moved out of this screen in this commit; they will re-appear on
+      # page 08 (Review & Download) when Phase B lands. Their reactive
+      # outputs (output$rf_preview_table, output$ec_config_table,
+      # output$factsheet_preview, the dl_* download handlers) remain
+      # defined in the server logic for Phase B to wire back up.
+      #
+      # The "Review & Download" CTA is intentionally disabled in Phase A
+      # because the target screen does not exist yet. Phase B will:
+      #   - add "publish" to SCREENS
+      #   - enable this button
+      #   - the existing btn_next handler will then advance to render_publish()
       div(class = "page-footer",
         div(class = "page-footer-status",
           div(class = "page-footer-status-mark"),
-          tags$span("RF complete \u00b7 download below or start a fresh wizard")
+          tags$span("RF complete · review & download next")
         ),
         div(class = "page-footer-actions",
           tags$button(id = "btn_back", type = "button",
             class = "btn btn-ghost action-button",
-            tags$span(class = "action-label", "\u2190 Back")
+            tags$span(class = "action-label", "← Back to weights")
           ),
-          tags$button(id = "btn_reset", type = "button",
-            class = "btn btn-ghost action-button",
-            tags$span(class = "action-label", "Start a new RF")
+          tags$button(id = "btn_next", type = "button",
+            class = "btn btn-continue action-button",
+            disabled = "disabled",
+            tags$span(class = "action-label", "Review & Download →")
           )
         )
       )
@@ -2797,6 +2768,19 @@ server <- function(input, output, session) {
       })
     })
 
+    # View toggle (Sparklines / Table) — same shape as the chart-toggle on
+    # the hero chart card. Default view is sparklines; the table view shows
+    # the per-EC RF breakdown DT (output$rf_preview_table) with full year
+    # range (no year filter — input$rf_year_filter NULL → table returns "All").
+    view <- input$ec_view %||% "sparklines"
+    body <- if (view == "table") {
+      div(class = "ec-contrib-table-wrap",
+        DT::dataTableOutput("rf_preview_table")
+      )
+    } else {
+      div(class = "ec-contribs-grid", cards)
+    }
+
     div(class = "output-card",
       div(class = "output-card-header",
         div(class = "output-card-header-text",
@@ -2805,12 +2789,25 @@ server <- function(input, output, session) {
           tags$span(class = "output-card-title",
             tags$strong("Per-EC"), " ", tags$em("contribution"))
         ),
-        tags$span(class = "ec-contrib-meta",
-          sprintf("showing %s · %d of %d ECs",
-                  scenario, length(picks), length(picks)))
+        # EC view toggle. Mirrors .chart-toggle on the hero chart for
+        # visual + interaction consistency. Wired by selectEcView JS.
+        div(class = "chart-toggle ec-view-toggle",
+          tags$button(type = "button",
+            class = paste("chart-toggle-btn ec-view-toggle-btn",
+                          if (view == "sparklines") "is-selected" else ""),
+            `data-view` = "sparklines",
+            onclick = "selectEcView('sparklines');",
+            "Sparklines"),
+          tags$button(type = "button",
+            class = paste("chart-toggle-btn ec-view-toggle-btn",
+                          if (view == "table") "is-selected" else ""),
+            `data-view` = "table",
+            onclick = "selectEcView('table');",
+            "Table")
+        )
       ),
       div(class = "output-card-body",
-        div(class = "ec-contribs-grid", cards)
+        body
       )
     )
   })
