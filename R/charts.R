@@ -54,7 +54,22 @@ mgmt_short_label <- function(mgmt_id) {
 
 # Custom ggplot theme. Cream background, mono tick labels, faded horizontal
 # gridlines only, no axis lines, no panel border, legend at bottom in mono.
-theme_vp_chart <- function(base_size = 11) {
+#
+# === CHART LABEL SIZE RULE (project standard) ============================
+# All chart labels — axis ticks, axis titles, legend, value labels, etc. —
+# must render at no smaller than 8px in the browser. 9-10px preferred for
+# accessibility. The audience for these charts is experts reviewing RF
+# outputs; functional legibility beats visual polish.
+#
+# How it translates here: ggiraph SVGs scale responsively to fit their
+# container, so nominal pt sizes shrink under downscale. Math:
+#     rendered_px = nominal_pt * 1.333 * (container_px / svg_natural_px)
+# At a typical 0.7-0.85x downscale, 12pt nominal -> ~11-13px rendered,
+# 11pt -> ~10-12px, 9pt -> ~8-10px (floor). 8pt -> below floor at narrow
+# viewports — DO NOT use sizes smaller than 9pt for element_text in this
+# theme. For geom_text (size in mm), keep at 4mm or higher.
+# =========================================================================
+theme_vp_chart <- function(base_size = 12) {
   ggplot2::theme_minimal(base_family = "Poppins") +
     ggplot2::theme(
       plot.background    = ggplot2::element_rect(fill = "#FAF8F1", color = NA),
@@ -66,17 +81,17 @@ theme_vp_chart <- function(base_size = 11) {
       axis.line          = ggplot2::element_blank(),
       axis.ticks         = ggplot2::element_blank(),
       axis.text          = ggplot2::element_text(family = "JetBrains Mono",
-                                                 size = base_size,
+                                                 size = base_size + 1,  # 13pt
                                                  color = "#8C9388"),
       axis.text.x        = ggplot2::element_text(margin = ggplot2::margin(t = 6)),
       axis.text.y        = ggplot2::element_text(margin = ggplot2::margin(r = 8)),
       axis.title.x       = ggplot2::element_text(family = "JetBrains Mono",
-                                                 size = base_size - 1,
+                                                 size = base_size,       # 12pt
                                                  color = "#8C9388",
                                                  margin = ggplot2::margin(t = 14),
                                                  hjust = 0.5),
       axis.title.y       = ggplot2::element_text(family = "JetBrains Mono",
-                                                 size = base_size - 1,
+                                                 size = base_size,       # 12pt
                                                  color = "#8C9388",
                                                  margin = ggplot2::margin(r = 14),
                                                  angle = 90,
@@ -86,7 +101,7 @@ theme_vp_chart <- function(base_size = 11) {
       legend.direction   = "horizontal",
       legend.title       = ggplot2::element_blank(),
       legend.text        = ggplot2::element_text(family = "JetBrains Mono",
-                                                 size  = 8.25,   # ~11px at 96dpi
+                                                 size  = base_size + 1,      # 13pt
                                                  color = "#525B4F",
                                                  face  = "bold"),
       legend.key         = ggplot2::element_blank(),
@@ -251,8 +266,10 @@ render_rf_bar <- function(df, year = 10) {
       ggplot2::aes(tooltip = tooltip, data_id = data_id),
       width = 0.6
     ) +
+    # Per chart-label rule: geom_text size in mm; 4mm => ~15px nominal,
+    # which stays >= 9-10px under typical responsive downscale.
     ggplot2::geom_text(ggplot2::aes(label = label_str, vjust = vjust),
-                       family = "JetBrains Mono", size = 3.4,
+                       family = "JetBrains Mono", size = 8,
                        color = "#525B4F") +
     ggplot2::scale_fill_manual(values = pal,
                                labels = function(x) toupper(ifelse(x == "BASE", "BASELINE", x))) +
