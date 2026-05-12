@@ -421,6 +421,17 @@ h6 { font-size: var(--text-base); }
   position: sticky;
   top: var(--space-4);
 }
+
+/* Hide the RF Details sidebar on the outputs screen (page 07) so the
+   review charts and tables get full horizontal width. The sidebar form
+   inputs are still in the DOM — just visually suppressed — so values
+   persist when the user navigates back to earlier screens. The dedicated
+   editable form on page 08 (Phase B) will edit the same state$* values
+   the sidebar binds to.
+   Also collapse the .page grid from 2-column to 1-column so the main
+   column actually claims the freed 22rem instead of leaving empty space. */
+body[data-screen="download"] .sidebar { display: none; }
+body[data-screen="download"] .page    { grid-template-columns: 1fr; }
 .sidebar-header {
   display: flex;
   align-items: baseline;
@@ -1987,6 +1998,110 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   width: 100% !important;
 }
 
+/* Page 07 outputs row: hero chart (left) + 10-year summary forest plot
+   (right). Collapses to a single column when the viewport gets tight so
+   the panels stack instead of squishing. Uses the existing .output-card
+   chrome for both children — no new card style. */
+.outputs-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+@media (max-width: 960px) {
+  .outputs-row { grid-template-columns: 1fr; }
+}
+
+/* Equal-height cards in .outputs-row: cards stretch to the row's tallest
+   child via grid default, then a flex chain inside lets the chart
+   container claim the body's full height instead of leaving empty space
+   beneath a short SVG (e.g. the forest plot inside the taller hero card). */
+.outputs-row .output-card {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;          /* row gap handles spacing in this context */
+}
+.outputs-row .output-card-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.outputs-row .rf-chart-container {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Page 07 EC contributions grid. 3 columns at desktop, collapses to 2
+   then 1 as the viewport tightens. Each cell is an .output-card that
+   contains: header (EC name + category badge), sparkline area, and a
+   footer with the value-at-t10 readout. */
+.ec-contribs-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+@media (max-width: 800px) {
+  .ec-contribs-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 500px) {
+  .ec-contribs-grid { grid-template-columns: 1fr; }
+}
+.ec-contrib-card {
+  /* Tighter padding than the default .output-card body since each card
+     hosts a small sparkline + label, not a full chart. */
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: 0;
+}
+.ec-contrib-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.ec-contrib-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--vp-ink);
+  font-size: var(--text-base);
+  line-height: 1.2;
+}
+.ec-contrib-spark {
+  width: 100%;
+  min-height: 3rem;
+}
+.ec-contrib-foot {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.ec-contrib-val {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-md);
+}
+.ec-contrib-val-neg { color: var(--vp-danger); }
+.ec-contrib-val-pos { color: var(--vp-forest-dark); }
+.ec-contrib-val-zero { color: var(--vp-ink-light); }
+.ec-contrib-foot-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--vp-ink-light);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.ec-contrib-meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--vp-ink-light);
+}
+
 /* Year picker row that appears above the bar chart only (rendered inside
    rf_chart_swap when chart_view == 'bar'). Inline label + compact dropdown. */
 .chart-bar-controls {
@@ -2179,8 +2294,17 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   color: var(--vp-ink-light);
   padding-top: var(--space-3);
 }
-.details-card .dataTables_paginate .paginate_button {
-  border-radius: var(--radius-xs) !important;
+/* Specificity bump: include .dataTables_wrapper in the chain so this
+   selector (0,4,0) outweighs DT's default '.dataTables_wrapper
+   .dataTables_paginate .paginate_button' rule (0,3,0). Lets us style the
+   buttons without !important. */
+.details-card .dataTables_wrapper .dataTables_paginate .paginate_button {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  padding: 0.25rem 0.625rem;
+  border-radius: var(--radius-xs);
 }
 .details-card .dataTables_paginate .paginate_button.current,
 .details-card .dataTables_paginate .paginate_button.current:hover {

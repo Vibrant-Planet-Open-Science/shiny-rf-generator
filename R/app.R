@@ -107,6 +107,17 @@ EC_GROUP_IDS <- unique(ec_labels$subcategory) |>
   (\(x) paste0("ecgrp_", x))()
 
 
+# ─── Feature flags ────────────────────────────────────────────────────────
+# FEATURE_EC_CONTRIBS controls the per-EC sparkline grid on page 07.
+# Shipped on as a v1 exploration pending feedback from Kat/Sophie. Flip to
+# FALSE and the grid section disappears entirely from page 07 with no other
+# changes required — useful if the addition turns out to not land well.
+FEATURE_EC_CONTRIBS <- TRUE
+# Scenario the sparkline grid renders for. Currently fixed; a future
+# enhancement could let users click a scenario in the hero chart to update.
+FEATURE_EC_CONTRIBS_SCENARIO <- "FIC4"
+
+
 # =============================================================================
 # Startup data — loaded once when the app starts (small files only)
 # =============================================================================
@@ -239,6 +250,14 @@ ui <- fluidPage(
     tags$script(HTML("
       // Scroll to top when navigating between screens.
       Shiny.addCustomMessageHandler('scroll_top', function(m) { window.scrollTo(0, 0); });
+
+      // Mirror state$screen onto a body-level data attribute so CSS can
+      // make per-screen layout decisions (e.g. hiding .sidebar on the
+      // outputs screen). Preserves DOM and input state — the sidebar
+      // inputs persist across navigation because they're not re-rendered.
+      Shiny.addCustomMessageHandler('set_body_screen', function(s) {
+        document.body.dataset.screen = s;
+      });
 
       // Sidebar collapse toggle.
       document.addEventListener('click', function(e) {
@@ -529,6 +548,13 @@ server <- function(input, output, session) {
     state$screen <- s
     session$sendCustomMessage("scroll_top", list())
   }
+
+  # Mirror state$screen onto body[data-screen=...] so CSS can hide layout
+  # chrome (like .sidebar) per-screen without re-rendering the sidebar
+  # DOM and losing its input state.
+  observe({
+    session$sendCustomMessage("set_body_screen", state$screen)
+  })
 
   # ── Forward navigation (Next / Compute RFs / Looks good) ─────────────────
   # This handler does double duty: it advances the screen AND triggers
@@ -1587,44 +1613,74 @@ server <- function(input, output, session) {
         div(class = "page-header-numeral", "07"),
         div(class = "page-header-overline",
           tags$span(class = "page-header-step", "Export"),
-          tags$span("· Download")
+          tags$span("· Outputs")
         ),
-        h1(tags$strong("Your RF"), " ", tags$em("is ready.")),
-        p("The weighted response function for ", tags$strong(name_str),
-          " across six wildfire intensity classes. ",
-          "Toggle to a year-10 snapshot, scan the table, download the data.")
+        h1(tags$strong("Here's your RF."), " ",
+           tags$em("Make sure the science is right.")),
+        p("Hero curve, 10-year summary, per-EC contributions, and the full ",
+          "data table. Continue to ", tags$strong("Review & Publish"),
+          " to add final notes and download.")
       ),
 
-      # ── Chart card (toggle + ggiraph chart) ──────────────────────────────
-      div(class = "output-card",
-        div(class = "output-card-header",
-          div(class = "output-card-header-text",
-            tags$span(class = "output-card-overline", "WEIGHTED RF"),
-            tags$span(class = "output-card-title",
-              tags$strong("Response"), " ", tags$em("by wildfire intensity"))
+      # ── Outputs row: hero chart card (left, 2fr) + 10-year summary
+      # forest plot (right, 1fr). Collapses to single column under 960px
+      # via the .outputs-row CSS.
+      div(class = "outputs-row",
+
+        # Chart card (toggle + ggiraph chart) — unchanged from previous.
+        div(class = "output-card",
+          div(class = "output-card-header",
+            div(class = "output-card-header-text",
+              tags$span(class = "output-card-overline", "WEIGHTED RF · TIME SERIES"),
+              tags$span(class = "output-card-title",
+                tags$strong("Response"), " ", tags$em("over thirty years"))
+            ),
+            # Chart-view toggle (TIME SERIES / BAR) — wired by selectChartView JS.
+            # Year picker for the bar view lives inside rf_chart_swap so it
+            # appears only when the user toggles to bar.
+            div(class = "chart-toggle",
+              tags$button(type = "button",
+                class = "chart-toggle-btn is-selected",
+                `data-view` = "timeseries",
+                onclick = "selectChartView('timeseries');",
+                "Time series"),
+              tags$button(type = "button",
+                class = "chart-toggle-btn",
+                `data-view` = "bar",
+                onclick = "selectChartView('bar');",
+                "Bar")
+            )
           ),
-          # Chart-view toggle (TIME SERIES / BAR) — wired by selectChartView JS.
-          # Year picker for the bar view lives inside rf_chart_swap so it
-          # appears only when the user toggles to bar.
-          div(class = "chart-toggle",
-            tags$button(type = "button",
-              class = "chart-toggle-btn is-selected",
-              `data-view` = "timeseries",
-              onclick = "selectChartView('timeseries');",
-              "Time series"),
-            tags$button(type = "button",
-              class = "chart-toggle-btn",
-              `data-view` = "bar",
-              onclick = "selectChartView('bar');",
-              "Bar")
+          div(class = "output-card-body",
+            div(class = "rf-chart-container",
+              uiOutput("rf_chart_swap")
+            )
           )
         ),
-        div(class = "output-card-body",
-          div(class = "rf-chart-container",
-            uiOutput("rf_chart_swap")
+
+        # 10-year summary forest plot — distills the curves to a single
+        # year (10) showing each scenario's combined RF as a dot. No error
+        # bars yet (variance not wired in).
+        div(class = "output-card",
+          div(class = "output-card-header",
+            div(class = "output-card-header-text",
+              tags$span(class = "output-card-overline", "10-YEAR SUMMARY"),
+              tags$span(class = "output-card-title",
+                tags$strong("QWRA-ready"), " ", tags$em("snapshot"))
+            )
+          ),
+          div(class = "output-card-body",
+            div(class = "rf-chart-container",
+              ggiraph::girafeOutput("rf_summary_forest", height = "auto")
+            )
           )
         )
       ),
+
+      # ── EC contributions grid (feature-flagged) ─────────────────────────
+      # Gated by FEATURE_EC_CONTRIBS at the top of app.R. When the flag is
+      # FALSE the renderUI returns NULL and the section disappears cleanly.
+      uiOutput("rf_ec_contribs"),
 
       # ── Table card (RF values at every t-step) ───────────────────────────
       div(class = "output-card",
@@ -2664,6 +2720,99 @@ server <- function(input, output, session) {
       target <- if (10 %in% yrs) 10 else max(yrs[yrs > 0], na.rm = TRUE)
     }
     render_rf_bar(d$combined, year = target)
+  })
+
+  # 10-year summary forest plot. Companion to the time-series chart;
+  # shows each scenario's combined RF at year 10 as a dot on a horizontal
+  # axis. See render_rf_summary_forest() in R/charts.R for chart details.
+  output$rf_summary_forest <- ggiraph::renderGirafe({
+    d <- rf_plot_data()
+    if (is.null(d)) return(NULL)
+    render_rf_summary_forest(d$combined, year = 10)
+  })
+
+  # EC contributions grid (page 07). Gated by FEATURE_EC_CONTRIBS so the
+  # whole exploration can be removed cleanly if Kat doesn't want it.
+  # Builds a 3-column grid of cards, one per picked EC, each showing a
+  # sparkline of that EC's RF curve for FIC4 + the year-10 value.
+  output$rf_ec_contribs <- renderUI({
+    if (!isTRUE(FEATURE_EC_CONTRIBS)) return(NULL)
+    d <- rf_plot_data()
+    if (is.null(d) || is.null(d$per_ec) || nrow(d$per_ec) == 0) return(NULL)
+
+    scenario <- FEATURE_EC_CONTRIBS_SCENARIO
+    picks    <- intersect(unique(d$per_ec$EC), unique(d$per_ec$EC))
+    if (length(picks) == 0) return(NULL)
+
+    # For each picked EC, render a card: name + badge + sparkline + value@t10.
+    cards <- lapply(picks, function(ec_col) {
+      info       <- ec_labels[ec_labels$column == ec_col, ]
+      label      <- if (nrow(info) > 0) info$label[1] else ec_col
+      category   <- if (nrow(info) > 0) info$subcategory[1] else ""
+      spark_id   <- paste0("rf_ec_spark_", gsub("[^a-zA-Z0-9]", "_", ec_col))
+      # Value at t=10 for this EC under the chosen scenario.
+      t10_val <- d$per_ec |>
+        dplyr::filter(EC == ec_col, MgmtID == scenario, rel.time == 10) |>
+        dplyr::pull(median_rf)
+      val_str <- if (length(t10_val) == 0 || is.na(t10_val[1])) {
+        "—"
+      } else {
+        v <- t10_val[1]
+        paste0(if (v >= 0) "+" else "", formatC(v, format = "f", digits = 2))
+      }
+      val_class <- if (length(t10_val) > 0 && !is.na(t10_val[1])) {
+        if (t10_val[1] < 0) "ec-contrib-val ec-contrib-val-neg"
+        else if (t10_val[1] > 0) "ec-contrib-val ec-contrib-val-pos"
+        else "ec-contrib-val ec-contrib-val-zero"
+      } else {
+        "ec-contrib-val ec-contrib-val-zero"
+      }
+
+      div(class = "output-card ec-contrib-card",
+        div(class = "ec-contrib-head",
+          div(class = "ec-contrib-title", label),
+          tags$span(class = "ec-row-badge", toupper(category))
+        ),
+        div(class = "ec-contrib-spark",
+          ggiraph::girafeOutput(spark_id, height = "auto")
+        ),
+        div(class = "ec-contrib-foot",
+          tags$span(class = val_class, val_str),
+          tags$span(class = "ec-contrib-foot-label",
+                    sprintf("contribution at t10 · %s", scenario))
+        )
+      )
+    })
+
+    # Render each sparkline output dynamically.
+    lapply(picks, function(ec_col) {
+      spark_id <- paste0("rf_ec_spark_", gsub("[^a-zA-Z0-9]", "_", ec_col))
+      local({
+        col <- ec_col
+        id  <- spark_id
+        output[[id]] <<- ggiraph::renderGirafe({
+          render_rf_ec_sparkline(d$per_ec, col,
+                                 scenario = FEATURE_EC_CONTRIBS_SCENARIO)
+        })
+      })
+    })
+
+    div(class = "output-card",
+      div(class = "output-card-header",
+        div(class = "output-card-header-text",
+          tags$span(class = "output-card-overline",
+                    "EC CONTRIBUTIONS · HOW EACH COMPONENT PULLED THE CURVE"),
+          tags$span(class = "output-card-title",
+            tags$strong("Per-EC"), " ", tags$em("contribution"))
+        ),
+        tags$span(class = "ec-contrib-meta",
+          sprintf("showing %s · %d of %d ECs",
+                  scenario, length(picks), length(picks)))
+      ),
+      div(class = "output-card-body",
+        div(class = "ec-contribs-grid", cards)
+      )
+    )
   })
 
   # Custom HTML table (vs DT) for full design-system control: mono headers,

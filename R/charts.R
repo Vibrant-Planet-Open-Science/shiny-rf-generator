@@ -333,6 +333,168 @@ render_rf_bar <- function(df, year = 10) {
 }
 
 
+# 10-year summary forest plot. Companion to the time-series chart on page 07:
+# distills the curves down to a single year (default 10) showing each
+# scenario's combined RF as a dot on a horizontal axis from -1 to +1.
+#
+# No error bars / variance — FIA-derived spread isn't wired in yet. The
+# panel intentionally renders just dots so we don't fake precision we
+# don't have. Add geom_errorbarh later when variance lands.
+#
+# Falls back to the largest available rel.time <= year if year 10 isn't
+# in the data (mirror of the bar-chart fallback in render_rf_bar).
+render_rf_summary_forest <- function(df, year = 10) {
+  if (is.null(df) || nrow(df) == 0) return(NULL)
+
+  pal   <- vp_chart_palette()
+  mgmts <- intersect(names(pal), unique(df$MgmtID))
+  if (length(mgmts) == 0) return(NULL)
+
+  yrs <- sort(unique(df$rel.time))
+  target <- if (year %in% yrs) year else max(yrs[yrs <= year], na.rm = TRUE)
+  if (!is.finite(target)) target <- max(yrs, na.rm = TRUE)
+
+  snap <- df |>
+    dplyr::filter(rel.time == target, MgmtID %in% mgmts) |>
+    dplyr::mutate(
+      MgmtID    = factor(MgmtID, levels = rev(mgmts)),  # rev so BASE renders at top
+      label_str = formatC(median_combined_rf, format = "f", digits = 2),
+      label_str = ifelse(median_combined_rf >= 0,
+                         paste0("+", label_str), label_str),
+      tooltip   = sprintf("%s @ t%d: %.2f", MgmtID, target, median_combined_rf),
+      data_id   = paste0("forest_", MgmtID)
+    )
+
+  if (nrow(snap) == 0) return(NULL)
+
+  display_labels <- function(x) {
+    ifelse(x == "BASE", "BASELINE", as.character(x))
+  }
+
+  p <- ggplot2::ggplot(snap, ggplot2::aes(x = median_combined_rf,
+                                          y = MgmtID,
+                                          color = MgmtID)) +
+    ggplot2::geom_vline(xintercept = 0, color = "#B8BDB3", linewidth = 0.4) +
+    ggiraph::geom_point_interactive(
+      ggplot2::aes(tooltip = tooltip, data_id = data_id),
+      size = 3.2
+    ) +
+    # Value annotation in the right margin (mono, value-coloured by sign).
+    ggplot2::geom_text(
+      ggplot2::aes(x = 1.05, label = label_str),
+      family = "JetBrains Mono", size = 4, hjust = 0,
+      color = "#525B4F", show.legend = FALSE
+    ) +
+    ggplot2::scale_color_manual(values = pal,
+                                labels = display_labels,
+                                guide  = "none") +
+    ggplot2::scale_x_continuous(
+      limits = c(-1.0, 1.35),  # extra right room for the label annotation
+      breaks = c(-1.0, -0.5, 0, 0.5, 1.0),
+      labels = c("-1.0", "-0.5", "0", "+0.5", "+1.0")
+    ) +
+    ggplot2::scale_y_discrete(labels = display_labels) +
+    ggplot2::labs(x = NULL, y = NULL) +
+    theme_vp_chart() +
+    # Hide x gridlines, keep horizontal lane separators light
+    ggplot2::theme(
+      panel.grid.major.y = ggplot2::element_line(color = "#E5DECD", linewidth = 0.3),
+      panel.grid.major.x = ggplot2::element_blank(),
+      legend.position    = "none"
+    )
+
+  ggiraph::girafe(
+    ggobj      = p,
+    width_svg  = 4.6,
+    height_svg = 3.6,
+    options    = list(
+      ggiraph::opts_hover(css = "stroke: #14180F; stroke-width: 2;"),
+      ggiraph::opts_tooltip(
+        opacity = 0.96,
+        offx    = 14,
+        offy    = 14,
+        css = paste(
+          "background-color: #14180F;",
+          "color: #FAF8F1;",
+          "padding: 6px 10px;",
+          "border-radius: 3px;",
+          "font-family: 'JetBrains Mono', monospace;",
+          "font-size: 11px;"
+        )
+      ),
+      ggiraph::opts_toolbar(saveaspng = FALSE),
+      ggiraph::opts_sizing(rescale = TRUE, width = 1)
+    )
+  )
+}
+
+
+# Per-EC sparkline. Tiny line chart of one EC's median RF over rel.time
+# for a single scenario (default FIC4). No axes, no labels — just shape.
+# Used in the page 07 EC contributions grid. Returns a girafe widget so
+# it can be dropped into a girafeOutput cell.
+#
+# Cautious feature: kept simple and self-contained so the whole grid can
+# be removed via the FEATURE_EC_CONTRIBS flag in app.R if Kat doesn't want
+# it. Sparkline data is the per_ec median RF (unweighted) — same data the
+# main time-series uses, just filtered to a single EC and scenario.
+render_rf_ec_sparkline <- function(per_ec_df, ec_column, scenario = "FIC4") {
+  if (is.null(per_ec_df) || nrow(per_ec_df) == 0) return(NULL)
+
+  d <- per_ec_df |>
+    dplyr::filter(EC == ec_column, MgmtID == scenario) |>
+    dplyr::arrange(rel.time)
+  if (nrow(d) < 2) return(NULL)
+
+  pal       <- vp_chart_palette()
+  line_col  <- if (scenario %in% names(pal)) pal[[scenario]] else "#525B4F"
+  # Tooltip per point for ggiraph hover.
+  d <- d |> dplyr::mutate(
+    tooltip = sprintf("t%d: %.2f", rel.time, median_rf),
+    data_id = paste0("ec_", ec_column, "_t", rel.time)
+  )
+
+  p <- ggplot2::ggplot(d, ggplot2::aes(x = rel.time, y = median_rf)) +
+    ggplot2::geom_hline(yintercept = 0, color = "#E5DECD", linewidth = 0.3) +
+    ggplot2::geom_line(color = line_col, linewidth = 1.2, lineend = "round") +
+    ggiraph::geom_point_interactive(
+      ggplot2::aes(tooltip = tooltip, data_id = data_id),
+      color = line_col, size = 1.6
+    ) +
+    ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0.02, 0.02))) +
+    ggplot2::theme_void() +
+    ggplot2::theme(
+      plot.background    = ggplot2::element_rect(fill = "transparent", color = NA),
+      panel.background   = ggplot2::element_rect(fill = "transparent", color = NA),
+      plot.margin        = ggplot2::margin(2, 2, 2, 2)
+    )
+
+  ggiraph::girafe(
+    ggobj      = p,
+    width_svg  = 3.6,
+    height_svg = 0.9,
+    options    = list(
+      ggiraph::opts_hover(css = "stroke-width: 2;"),
+      ggiraph::opts_tooltip(
+        opacity = 0.96,
+        offx    = 10,
+        offy    = 10,
+        css = paste(
+          "background-color: #14180F;",
+          "color: #FAF8F1;",
+          "padding: 4px 8px;",
+          "border-radius: 3px;",
+          "font-family: 'JetBrains Mono', monospace;",
+          "font-size: 11px;"
+        )
+      ),
+      ggiraph::opts_toolbar(saveaspng = FALSE),
+      ggiraph::opts_sizing(rescale = TRUE, width = 1)
+    )
+  )
+}
+
+
 # Custom HTML table for the RF values. Wide format: rows = scenarios,
 # columns = T0..T30. Negatives rendered in danger color; baseline row in
 # italic; mono throughout. Returns a tagList ready to drop into renderUI.
