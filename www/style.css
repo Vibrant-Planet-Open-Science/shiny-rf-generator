@@ -1987,8 +1987,38 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   width: 100% !important;
 }
 
+/* Year picker row that appears above the bar chart only (rendered inside
+   rf_chart_swap when chart_view == 'bar'). Inline label + compact dropdown. */
+.chart-bar-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.chart-bar-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vp-ink-light);
+  margin: 0;
+}
+/* Shiny wraps selectInput in a .form-group with bottom margin; kill it here
+   so the dropdown sits on the same baseline as the label. */
+.chart-bar-controls .form-group {
+  margin-bottom: 0;
+}
+
 
 /* ── RF values table ─────────────────────────────────────────── */
+/* Scroll wrapper — the parent .output-card has overflow:hidden, so when
+   the table is wider than the card (lots of timestep columns or narrow
+   viewport), wrap it in this so it can scroll horizontally instead of
+   getting clipped. */
+.rf-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
 .rf-table {
   width: 100%;
   border-collapse: collapse;
@@ -2096,4 +2126,74 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   padding: var(--space-5);
   border-top: 1px solid var(--border-faint);
   background: var(--vp-paper);
+}
+
+/* ── DT tables inside .details-card — match the design-system .rf-table ──
+   Lots of !important overrides because DT injects inline styles on render
+   and includes its own stylesheet with high specificity. Scoped to
+   .details-card so the rules don't leak to other DT tables in the app. */
+.details-card .dataTables_wrapper {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--vp-ink);
+}
+.details-card table.dataTable {
+  border-collapse: collapse !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+.details-card table.dataTable thead th {
+  font-family: var(--font-mono) !important;
+  font-size: var(--text-eyebrow) !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vp-ink-light) !important;
+  border-bottom: 1px solid var(--border-soft) !important;
+  border-top: none !important;
+  background: var(--vp-paper) !important;
+  padding: var(--space-3) var(--space-4) !important;
+}
+.details-card table.dataTable tbody td {
+  padding: var(--space-3) var(--space-4) !important;
+  color: var(--vp-ink);
+  border-top: 1px solid var(--border-faint) !important;
+  background: white !important;
+}
+.details-card table.dataTable.row-border tbody tr:hover td,
+.details-card table.dataTable.hover tbody tr:hover td {
+  background: var(--vp-paper-warm) !important;
+}
+/* Neutralize DT's stripe class in case it's applied — keep all rows white. */
+.details-card table.dataTable.stripe tbody tr.odd td,
+.details-card table.dataTable.display tbody tr.odd td {
+  background: white !important;
+}
+/* Pagination + info row */
+.details-card .dataTables_info,
+.details-card .dataTables_paginate {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--vp-ink-light);
+  padding-top: var(--space-3);
+}
+.details-card .dataTables_paginate .paginate_button {
+  border-radius: var(--radius-xs) !important;
+}
+.details-card .dataTables_paginate .paginate_button.current,
+.details-card .dataTables_paginate .paginate_button.current:hover {
+  background: var(--vp-forest-deep) !important;
+  border-color: var(--vp-forest-deep) !important;
+  color: white !important;
+}
+/* Sort arrows tinted to design-system muted */
+.details-card table.dataTable thead .sorting:before,
+.details-card table.dataTable thead .sorting:after,
+.details-card table.dataTable thead .sorting_asc:before,
+.details-card table.dataTable thead .sorting_asc:after,
+.details-card table.dataTable thead .sorting_desc:before,
+.details-card table.dataTable thead .sorting_desc:after {
+  color: var(--vp-ink-faint) !important;
 }

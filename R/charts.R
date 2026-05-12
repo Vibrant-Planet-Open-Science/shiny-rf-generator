@@ -138,10 +138,16 @@ render_rf_timeseries <- function(df) {
             min(diff(x_breaks)) / 2
           else 1
 
-  # ymin/ymax for the hover rects. Pad to the visible range so rects span
-  # the whole plotting area; the actual y scale auto-fits to the data.
-  y_pad <- max(abs(df$median_combined_rf), na.rm = TRUE) * 1.1
-  if (!is.finite(y_pad) || y_pad == 0) y_pad <- 1
+  # ymin/ymax for the hover rects. Match the actual data range (NOT a
+  # symmetric ±max pad) so ggplot's auto y-scale fits tight to the lines
+  # and the axis breaks reflect the real variation between FICs. Using
+  # symmetric ±max here is what was inflating the y-axis past the data.
+  y_data_min <- min(df$median_combined_rf, na.rm = TRUE)
+  y_data_max <- max(df$median_combined_rf, na.rm = TRUE)
+  if (!is.finite(y_data_min) || !is.finite(y_data_max) ||
+      y_data_min == y_data_max) {
+    y_data_min <- -1; y_data_max <- 1   # degenerate-data fallback
+  }
 
   # Build per-timestep unified tooltip data. One row per rel.time; tooltip is
   # an HTML block listing every series at that x with a colored dot prefix.
@@ -172,8 +178,8 @@ render_rf_timeseries <- function(df) {
     dplyr::mutate(
       xmin    = rel.time - step,
       xmax    = rel.time + step,
-      ymin    = -y_pad,
-      ymax    = y_pad,
+      ymin    = y_data_min,
+      ymax    = y_data_max,
       data_id = paste0("hover_", rel.time)
     )
 
@@ -181,6 +187,18 @@ render_rf_timeseries <- function(df) {
                                         color = MgmtID, group = MgmtID)) +
     # Reference line at y=0
     ggplot2::geom_hline(yintercept = 0, color = "#B8BDB3", linewidth = 0.4) +
+    # Per-timestep hover guide lines. Same data_id as the hover rects so
+    # ggiraph's hover state highlights them when the user is over a column.
+    # Default stroke-opacity is 0 (invisible); opts_hover bumps it to 1 to
+    # reveal the dashed vertical reference line at the hovered timestep.
+    ggiraph::geom_vline_interactive(
+      data = unified,
+      ggplot2::aes(xintercept = rel.time, data_id = data_id),
+      color     = "#14180F",
+      linewidth = 0.5,
+      linetype  = "dashed",
+      alpha     = 0
+    ) +
     # Baseline rendered dashed (under the FIC lines)
     {if (baseline) ggplot2::geom_line(
       data = dplyr::filter(df, MgmtID == "BASE"),
@@ -192,7 +210,8 @@ render_rf_timeseries <- function(df) {
       linewidth = 1.4, lineend = "round"
     ) +
     # Top-layer hover rects — invisible, one per timestep. Catches the cursor
-    # anywhere in the column and fires the unified HTML tooltip.
+    # anywhere in the column and fires the unified HTML tooltip + lights up
+    # the matching guide vline (via shared data_id).
     ggiraph::geom_rect_interactive(
       data = unified,
       ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
@@ -207,6 +226,12 @@ render_rf_timeseries <- function(df) {
                                 expand = ggplot2::expansion(mult = c(0.02, 0.02))) +
     ggplot2::labs(x = "Relative year", y = "Weighted effect on HVRA") +
     theme_vp_chart() +
+    # Time-series-only override: enable vertical gridlines at each x-tick.
+    # The shared theme keeps them off by default since they don't make sense
+    # on the bar chart's categorical x-axis.
+    ggplot2::theme(
+      panel.grid.major.x = ggplot2::element_line(color = "#E5DECD", linewidth = 0.3)
+    ) +
     ggplot2::guides(color = ggplot2::guide_legend(
       nrow = 1,
       override.aes = list(linewidth = 1.6)
@@ -217,7 +242,11 @@ render_rf_timeseries <- function(df) {
     width_svg  = 9.5,
     height_svg = 4.6,
     options = list(
-      ggiraph::opts_hover(css = ""),
+      # On hover, both the rect and the vline (sharing data_id) get this CSS:
+      # - stroke-opacity:1 makes the vline visible (it has stroke, no fill)
+      # - fill-opacity:0 keeps the rect invisible (it has fill, no stroke)
+      # Net result: only the dashed reference line lights up at the hovered x.
+      ggiraph::opts_hover(css = "stroke-opacity: 1; fill-opacity: 0;"),
       ggiraph::opts_tooltip(
         opacity = 0.96,
         offx    = 14,
@@ -357,8 +386,13 @@ render_rf_table_html <- function(combined_df) {
     )
   })
 
-  htmltools::tags$table(class = "rf-table",
-    header,
-    htmltools::tags$tbody(rows)
+  # Wrap in a scroll container so the table can overflow horizontally on
+  # narrow viewports (the parent .output-card has overflow: hidden, which
+  # would otherwise clip the right-most timestep columns).
+  htmltools::tags$div(class = "rf-table-scroll",
+    htmltools::tags$table(class = "rf-table",
+      header,
+      htmltools::tags$tbody(rows)
+    )
   )
 }

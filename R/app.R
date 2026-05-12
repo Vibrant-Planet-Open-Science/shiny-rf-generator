@@ -1448,13 +1448,18 @@ server <- function(input, output, session) {
 
     stats <- ec_range_stats(state$filtered_data, col)
 
-    # Saved state (back-nav) — NULL on first visit.
+    # Saved state (back-nav) — NULL on first visit. Default the effect to
+    # "Positive" so each row arrives with a sensible pick (matches the
+    # majority case in workshops); user can flip to NEG or RANGE freely.
     saved_fx  <- isolate(input[[paste0("fx_", safe)]])
     saved_wt  <- isolate(input[[paste0("wt_", safe)]]) %||% 3L
     saved_min <- isolate(input[[paste0("rng_min_", safe)]])
     saved_max <- isolate(input[[paste0("rng_max_", safe)]])
 
-    fx_class <- switch(saved_fx %||% "",
+    needs_default_fx <- is.null(saved_fx)
+    if (needs_default_fx) saved_fx <- "Positive"
+
+    fx_class <- switch(saved_fx,
                        "Positive" = "fx-positive",
                        "Negative" = "fx-negative",
                        "Range"    = "fx-range",
@@ -1465,23 +1470,22 @@ server <- function(input, output, session) {
 
     div(class = paste("ec-row", fx_class), id = paste0("ecrow_", safe),
 
-      # ── Meta column ──────────────────────────────────────────────────────
+      # Push the "Positive" default to Shiny on first render of this row so
+      # input$fx_<safe> is non-null (the footer "X of Y ECs set" check reads
+      # it). Skipped on back-nav when the user already has a saved value.
+      if (needs_default_fx) tags$script(HTML(sprintf(
+        "Shiny.setInputValue('fx_%s', 'Positive', {priority: 'event'});", safe
+      ))),
+
+      # ── Meta row: title + subcategory badge inline ───────────────────────
       div(class = "ec-row-meta",
         div(class = "ec-row-title", lbl),
-        tags$span(class = "ec-row-badge", toupper(cat)),
-        # Stats line — display:none unless .fx-range is on the row.
-        div(class = "ec-row-stats",
-          tags$span(class = "stat-num", fmt_stat(stats$min)), unit_suffix,
-          tags$span(class = "stat-sep", "—"),
-          tags$span(class = "stat-num", fmt_stat(stats$max)), unit_suffix,
-          tags$span(class = "stat-sep", "·"),
-          "med ",
-          tags$span(class = "stat-num", fmt_stat(stats$median)), unit_suffix
-        )
+        tags$span(class = "ec-row-badge", toupper(cat))
       ),
 
       # ── Effect toggle (POS / NEG / RANGE) ───────────────────────────────
       div(class = "ec-effect-toggle",
+        tags$span(class = "ec-effect-label", "Effect"),
         lapply(c("Positive", "Negative", "Range"), function(eff) {
           icon  <- switch(eff, "Positive" = "↗", "Negative" = "↘", "Range" = "∧")
           label <- switch(eff, "Positive" = "POS", "Negative" = "NEG", "Range" = "RANGE")
@@ -1514,7 +1518,10 @@ server <- function(input, output, session) {
       ),
 
       # ── Right column B: min/max inputs (visible only when fx-range) ─────
+      # Leading "Range" row label (shared 7rem width with Effect / Importance)
+      # so the inputs start at the same x as the buttons in those rows.
       div(class = "ec-range-inputs",
+        tags$span(class = "ec-range-row-label", "Range"),
         tags$span(class = "ec-range-label", "Min"),
         tags$input(type = "number",
           class = "ec-range-input",
@@ -1530,6 +1537,17 @@ server <- function(input, output, session) {
           oninput = sprintf("pushEcRange('%s', 'max', this.value);", safe)
         ),
         if (nzchar(unit)) tags$span(class = "ec-range-unit", unit)
+      ),
+
+      # ── Stats line: range + median, only visible in fx-range mode. ───────
+      # Sits below the min/max inputs as context for what bounds to set.
+      div(class = "ec-row-stats",
+        tags$span(class = "stat-num", fmt_stat(stats$min)), unit_suffix,
+        tags$span(class = "stat-sep", "—"),
+        tags$span(class = "stat-num", fmt_stat(stats$max)), unit_suffix,
+        tags$span(class = "stat-sep", "·"),
+        "med ",
+        tags$span(class = "stat-num", fmt_stat(stats$median)), unit_suffix
       )
     )
   }
@@ -1571,7 +1589,9 @@ server <- function(input, output, session) {
             tags$span(class = "output-card-title",
               tags$strong("Response"), " ", tags$em("by wildfire intensity"))
           ),
-          # Chart-view toggle (TIME SERIES / BAR · T10) — wired by selectChartView JS.
+          # Chart-view toggle (TIME SERIES / BAR) — wired by selectChartView JS.
+          # Year picker for the bar view lives inside rf_chart_swap so it
+          # appears only when the user toggles to bar.
           div(class = "chart-toggle",
             tags$button(type = "button",
               class = "chart-toggle-btn is-selected",
@@ -1582,7 +1602,7 @@ server <- function(input, output, session) {
               class = "chart-toggle-btn",
               `data-view` = "bar",
               onclick = "selectChartView('bar');",
-              "Bar · T10")
+              "Bar")
           )
         ),
         div(class = "output-card-body",
@@ -2575,10 +2595,39 @@ server <- function(input, output, session) {
 
   output$rf_chart_swap <- renderUI({
     view <- input$chart_view %||% "timeseries"
+    # height = "auto" lets the container match the SVG's natural aspect ratio
+    # (set by width_svg / height_svg in render_rf_*), so the chart fills its
+    # parent without empty bands top/bottom.
     if (view == "bar") {
-      ggiraph::girafeOutput("rf_chart_bar", height = "440px")
+      # Build the year selector from the available rel.time values (post-
+      # disturbance only — year 0 is the pre-disturbance baseline = all 0s,
+      # not interesting). Preserve the previously selected year across
+      # toggle re-renders via isolate().
+      d <- rf_plot_data()
+      yrs <- if (!is.null(d)) {
+        v <- sort(unique(d$combined$rel.time))
+        v[v > 0]
+      } else {
+        c(1, 5, 10, 15, 20)
+      }
+      prev_year <- isolate(input$bar_year)
+      sel_year  <- if (!is.null(prev_year) && as.numeric(prev_year) %in% yrs)
+                     prev_year
+                   else if (10 %in% yrs) 10
+                   else yrs[1]
+
+      tagList(
+        div(class = "chart-bar-controls",
+          tags$label(class = "chart-bar-label", "Year:"),
+          selectInput("bar_year", NULL,
+            choices  = yrs,
+            selected = sel_year,
+            width    = "90px")
+        ),
+        ggiraph::girafeOutput("rf_chart_bar", height = "auto")
+      )
     } else {
-      ggiraph::girafeOutput("rf_chart_ts",  height = "440px")
+      ggiraph::girafeOutput("rf_chart_ts",  height = "auto")
     }
   })
 
@@ -2588,14 +2637,18 @@ server <- function(input, output, session) {
     render_rf_timeseries(d$combined)
   })
 
-  # Bar snapshot defaults to year 10 — matches the mockup's "BAR · T10".
-  # If year 10 isn't in the data (e.g. shorter horizon), fall back to the
-  # latest available post-disturbance year.
+  # Bar snapshot — driven by input$bar_year from the dropdown rendered in
+  # rf_chart_swap. Defaults to year 10 when the input is unset (first render
+  # or before the selectInput initializes); falls back to the latest available
+  # post-disturbance year if year 10 isn't in the data.
   output$rf_chart_bar <- ggiraph::renderGirafe({
     d <- rf_plot_data()
     if (is.null(d)) return(NULL)
     yrs    <- sort(unique(d$combined$rel.time))
-    target <- if (10 %in% yrs) 10 else max(yrs[yrs > 0], na.rm = TRUE)
+    target <- as.numeric(input$bar_year %||% NA_real_)
+    if (is.na(target) || !(target %in% yrs)) {
+      target <- if (10 %in% yrs) 10 else max(yrs[yrs > 0], na.rm = TRUE)
+    }
     render_rf_bar(d$combined, year = target)
   })
 
