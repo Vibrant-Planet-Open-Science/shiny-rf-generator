@@ -1599,7 +1599,17 @@ server <- function(input, output, session) {
         })
       ),
 
-      # ── Right column A: importance picker (visible unless fx-range) ─────
+      # ── Right column A: importance picker (visible on ALL rows) ────────
+      # NB: previously hidden on Range rows via .ec-row.fx-range .ec-
+      # importance-picker { display: none; }. That CSS rule was removed
+      # because the underlying math (compute_weighted_de_rf in
+      # functions.R) multiplies Range rows' rf_value by this importance
+      # value too -- so hiding the picker meant Range rows were silently
+      # being weighted by a value the user couldn't see or edit. See the
+      # ec-importance-help-range note below for the user-facing message.
+      # >>> PENDING KAT REVIEW: if Kat decides Range mode is unweighted,
+      # >>> re-add the display:none rule AND patch functions.R to skip
+      # >>> the wt multiplication for Range rows. See Q&A doc.
       div(class = "ec-importance-picker",
         tags$span(class = "ec-importance-label", "Importance"),
         div(class = "ec-importance-buttons",
@@ -1615,6 +1625,14 @@ server <- function(input, output, session) {
           tags$span(class = "ec-importance-anchor", "crit")
         )
       ),
+
+      # Helper text shown only on Range rows -- flags that the importance
+      # picker above is in effect even though the layout might suggest it
+      # only matters for Pos/Neg. Pending Kat's structural decision; see
+      # the comment above the importance picker for what to change if she
+      # rules Range mode unweighted.
+      div(class = "ec-importance-help-range",
+          "Range mode also uses this weight in the combined-RF math."),
 
       # ── Right column B: min/max inputs (visible only when fx-range) ─────
       # Leading "Range" row label (shared 7rem width with Effect / Importance)
@@ -3359,7 +3377,13 @@ server <- function(input, output, session) {
       dplyr::mutate(
         Importance = as.integer(wts[[column]] %||% 3L),
         Effect     = fxs[[column]] %||% "Positive",
-        Range      = if (!is.null(rngs[[column]]) && !all(is.na(rngs[[column]])))
+        # Range cell is gated on Effect to match the recap and markdown
+        # surfaces; without this, stale min/max from a prior mode toggle
+        # leaks into the row even when Effect is Pos/Neg. See the inline
+        # note in build_ec_csv() for the full context.
+        Range      = if (Effect == "Range" &&
+                         !is.null(rngs[[column]]) &&
+                         !all(is.na(rngs[[column]])))
                        paste(rngs[[column]], collapse = " \u2013 ") else "\u2014"
       ) |>
       dplyr::ungroup() |>

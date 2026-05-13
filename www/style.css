@@ -1853,13 +1853,34 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   color: var(--vp-orange-deep);
 }
 
-/* ── Right column A: importance picker (default visible) ─────────── */
+/* ── Right column A: importance picker (visible on ALL rows) ─────── */
+/* Previously hidden on .fx-range rows. That rule was removed because
+   the math (compute_weighted_de_rf) multiplies Range rows by this
+   importance value too -- hiding the picker meant Range rows were
+   silently weighted by a value the user couldn't see or edit.
+   PENDING KAT REVIEW: if Range is meant to be unweighted, re-add the
+   display:none rule here AND skip the wt multiplication in
+   functions.R. See render_ec_weight_row() in app.R for the matching
+   note. */
 .ec-importance-picker {
   display: flex;
   align-items: center;
   gap: var(--space-3);
 }
-.ec-row.fx-range .ec-importance-picker { display: none; }
+/* Helper text shown only on Range rows -- explains that the picker
+   above still drives the math for Range mode. Padding-left matches
+   .ec-row-stats so the line reads as a footnote to the picker rather
+   than a free-standing element. */
+.ec-importance-help-range {
+  display: none;
+  padding-left: 7rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--vp-ink-mid);
+  letter-spacing: 0.04em;
+}
+.ec-row.fx-range .ec-importance-help-range { display: block; }
 
 /* .ec-importance-label styling lives in the shared rule above with
    .ec-effect-label so both labels match width + typography. */
