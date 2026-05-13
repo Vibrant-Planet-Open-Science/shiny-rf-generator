@@ -3463,20 +3463,36 @@ server <- function(input, output, session) {
     )
   }
 
-  # EC config CSV: one row per selected EC with user's weight/effect/range settings
+  # EC config CSV: one row per selected EC with user's weight/effect/range
+  # settings.
+  #
+  # Min/Max are gated on Effect == "Range". state$ec_ranges can hold stale
+  # values from a prior mode toggle (the page-06 UI hides the min/max
+  # inputs when the row is in Pos/Neg mode but does not clear the
+  # underlying state), so emitting them unconditionally would surface
+  # numbers the user can't see and didn't intend to publish. Pos/Neg rows
+  # get NA_real_, which the downstream markdown table renders as "—".
   build_ec_csv <- function() {
     picks <- isolate(selected_ecs())
     if (length(picks) == 0) return(data.frame())
     wts <- state$ec_weights; fxs <- state$ec_effects; rngs <- state$ec_ranges
+
+    eff <- vapply(picks, function(c) fxs[[c]] %||% "Positive", character(1))
+
+    range_val <- function(c, idx) {
+      if (identical(fxs[[c]], "Range") && !is.null(rngs[[c]])) rngs[[c]][idx]
+      else NA_real_
+    }
+
     data.frame(
       Column     = picks,
       Label      = vapply(picks, function(c) {
         r <- ec_labels$label[ec_labels$column == c]; if (length(r)) r[1] else c
       }, character(1)),
       Importance = vapply(picks, function(c) as.integer(wts[[c]] %||% 3L), integer(1)),
-      Effect     = vapply(picks, function(c) fxs[[c]] %||% "Positive", character(1)),
-      Min        = vapply(picks, function(c) if (!is.null(rngs[[c]])) rngs[[c]][1] else NA_real_, numeric(1)),
-      Max        = vapply(picks, function(c) if (!is.null(rngs[[c]])) rngs[[c]][2] else NA_real_, numeric(1)),
+      Effect     = eff,
+      Min        = vapply(picks, function(c) range_val(c, 1), numeric(1)),
+      Max        = vapply(picks, function(c) range_val(c, 2), numeric(1)),
       stringsAsFactors = FALSE
     )
   }
@@ -3517,6 +3533,15 @@ server <- function(input, output, session) {
       paste0("| ", ec_tbl$Label, " | ", ec_tbl$Importance, " | ", ec_tbl$Effect, " |",
              collapse = "\n")
     } else "No ECs selected"
+
+    # Section helper: emit a `## Heading\n\nbody` block when body is
+    # non-empty, otherwise emit "" so the outer paste skips the section
+    # entirely (no stranded headings on the published fact sheet).
+    section <- function(heading, body) {
+      if (!nzchar(body)) return("")
+      paste("", paste0("## ", heading), "", body, sep = "\n")
+    }
+
     paste(
       paste0("# ", nm),
       if (nzchar(sci)) paste0("*", sci, "*") else "",
