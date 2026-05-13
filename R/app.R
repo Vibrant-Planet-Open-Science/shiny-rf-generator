@@ -3373,17 +3373,76 @@ server <- function(input, output, session) {
   })
 
   # ── Fact sheet preview ─────────────────────────────────────────────────
+  # \u2500\u2500 Fact sheet preview (page 08) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  # Renders the published fact-sheet content as a white-paper card meant
+  # to read like the eventual PDF output. Pulls from the same input$* /
+  # state$* fields used by build_factsheet() (the markdown download), so
+  # the preview here matches what gets bundled into the download.
   output$factsheet_preview <- renderUI({
-    nm <- input$hvra_name %||% "Unnamed HVRA"
-    HTML(paste0(
-      "<h3>", nm, "</h3>",
-      "<p><strong>Ecoregion:</strong> ",
-      if (length(state$selected_regions) > 0) paste(state$selected_regions, collapse = ", ") else "\u2014",
-      "</p>",
-      "<p><strong>Description:</strong> ", input$desc %||% "\u2014", "</p>",
-      "<p><strong>Assumptions:</strong> ", input$assumptions %||% "\u2014", "</p>",
-      "<p><strong>References:</strong> ", input$refs %||% "\u2014", "</p>"
-    ))
+    nm   <- input$hvra_name %||% "Untitled RF"
+    sci  <- input$hvra_sci  %||% ""
+    desc <- input$desc      %||% ""
+    fts  <- input$final_thoughts %||% ""
+    auth <- input$authors_text   %||% ""
+
+    aoi_txt <- if (length(state$selected_regions) > 0) {
+      paste(state$selected_regions, collapse = ", ")
+    } else if (!is.null(state$aoi_stands)) {
+      "Uploaded boundary"
+    } else "\u2014"
+
+    n_stands <- if (!is.null(state$freq_table)) {
+      format(nrow(state$freq_table), big.mark = ",")
+    } else "\u2014"
+    variant <- state$variant %||% "\u2014"
+
+    div(class = "factsheet-card",
+      # Title row: HVRA name + scientific name (italic)
+      div(class = "factsheet-title",
+        tags$strong(nm),
+        if (nzchar(sci)) tagList(" \u00b7 ", tags$em(sci))
+      ),
+
+      # 3-up metadata strip
+      div(class = "factsheet-meta",
+        div(class = "factsheet-meta-item",
+          div(class = "factsheet-meta-label", "AOI"),
+          div(class = "factsheet-meta-value", aoi_txt)
+        ),
+        div(class = "factsheet-meta-item",
+          div(class = "factsheet-meta-label", "Stands"),
+          div(class = "factsheet-meta-value", n_stands)
+        ),
+        div(class = "factsheet-meta-item",
+          div(class = "factsheet-meta-label", "Variant"),
+          div(class = "factsheet-meta-value", variant)
+        )
+      ),
+
+      # Description (only if non-empty)
+      if (nzchar(desc)) tagList(
+        div(class = "factsheet-section",
+          tags$strong("Description."), " ", desc
+        )
+      ),
+
+      # Author's notes (final_thoughts) -- placeholder if empty
+      div(class = "factsheet-section",
+        tags$strong("Author's notes."), " ",
+        if (nzchar(fts)) {
+          tags$span(fts)
+        } else {
+          tags$span(class = "factsheet-placeholder",
+            "Your \"Final thoughts\" above will appear here when published.")
+        }
+      ),
+
+      # Authors (only if non-empty)
+      div(class = "factsheet-section",
+        tags$strong("Authors."), " ",
+        if (nzchar(auth)) auth else tags$span(class = "factsheet-placeholder", "\u2014")
+      )
+    )
   })
 
 
@@ -3422,16 +3481,37 @@ server <- function(input, output, session) {
     )
   }
 
-  # Fact sheet markdown: HVRA metadata + EC table
+  # Fact sheet markdown: HVRA metadata + EC table.
+  # Reads from base input IDs (input$hvra_name, input$desc, ...); the
+  # page-08 textInputs use _p08 suffixes but are kept in lock-step via
+  # the sync_text_input_pair() observers, so reading the base ID gets
+  # the user's latest edit either way.
+  #
+  # nm is guaranteed non-empty by the page-01 gate (Continue is disabled
+  # until input$hvra_name has non-whitespace content), so no defensive
+  # fallback. sci, desc, and the rest stay optional and use %||% "" so
+  # nzchar() in the section() helper returns FALSE rather than erroring
+  # on NULL.
+  #
+  # Ecoregion applicability is *not* a user input -- it's derived from
+  # the AOI selection (state$selected_regions for map mode,
+  # state$aoi_stands for file upload), mirroring the read-only display
+  # on page 08.
   build_factsheet <- function() {
-    nm   <- input$hvra_name %||% "Unnamed HVRA"
-    sci  <- input$hvra_sci %||% ""
-    desc <- input$desc %||% ""
-    eco  <- input$ecoregion_appl %||% ""
-    auth <- input$authors_text %||% ""
-    assu <- input$assumptions %||% ""
-    refs <- input$refs %||% ""
+    nm   <- input$hvra_name
+    sci  <- input$hvra_sci       %||% ""
+    desc <- input$desc           %||% ""
+    auth <- input$authors_text   %||% ""
+    assu <- input$assumptions    %||% ""
     notes <- input$workshop_notes %||% ""
+    fts  <- input$final_thoughts %||% ""
+    refs <- input$refs           %||% ""
+
+    regions <- state$selected_regions %||% character()
+    eco <- if (length(regions) > 0)        paste(regions, collapse = ", ")
+           else if (!is.null(state$aoi_stands)) "Uploaded boundary"
+           else                                  ""
+
     ec_tbl <- build_ec_csv()
     ec_md <- if (nrow(ec_tbl) > 0) {
       paste0("| ", ec_tbl$Label, " | ", ec_tbl$Importance, " | ", ec_tbl$Effect, " |",
@@ -3440,14 +3520,19 @@ server <- function(input, output, session) {
     paste(
       paste0("# ", nm),
       if (nzchar(sci)) paste0("*", sci, "*") else "",
-      "", "## Description", desc,
-      "", "## Ecoregion applicability", eco,
-      "", "## Authors", auth,
-      "", "## Assumptions", assu,
-      "", "## EC Configuration",
-      "| EC | Importance | Effect |", "| --- | --- | --- |", ec_md,
-      "", "## References", refs,
-      if (nzchar(notes)) paste("", "## Workshop Notes", notes) else "",
+      section("Ecoregion applicability", eco),
+      section("Description",             desc),
+      section("Authors",                 auth),
+      section("Assumptions",             assu),
+      "",
+      "## EC Configuration",
+      "",
+     "| EC | Importance | Effect | Min | Max |",
+      "| --- | --- | --- | --- | --- |",
+      ec_md,
+      section("Workshop notes",  notes),
+      section("Final thoughts",  fts),
+      section("References",      refs),
       sep = "\n"
     )
   }
