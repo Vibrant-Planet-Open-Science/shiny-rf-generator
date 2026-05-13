@@ -59,13 +59,26 @@ shiny::addResourcePath("www", here::here("www"))
 
 # Screen order — the wizard progresses through these left to right.
 # "species" is conditionally skipped when rf_type == "stand".
-SCREENS <- c("aoi", "filters", "review", "rftype", "ecs", "weights", "download")
+# NOTE on the "publish" screen id: MVP scope is finalize-notes-then-download
+# (no actual publish-to-library action). The id is named "publish" because
+# the design + UX language ("Review & Publish") anticipates a future state
+# where downloads also push the RF to a shared library. For MVP, "publish"
+# is functionally equivalent to "download" -- but the id, label, and UI
+# text intentionally use the forward-looking term so we don't have to
+# rename later when the publish action is wired up.
+SCREENS <- c("aoi", "filters", "review", "rftype", "ecs", "weights",
+             "outputs", "publish")
 
 # Labels shown in the breadcrumb. "species" is omitted from breadcrumb
-# because it's conditional — the breadcrumb always shows 7 steps.
+# because it's conditional — the breadcrumb always shows 8 steps.
+# Page 03 ("review") = AOI/filter setup review.
+# Page 07 ("outputs") = final RF outputs review (no editing).
+# Page 08 ("publish") = finalize notes + download (see SCREENS NOTE above).
 STEP_LABELS <- c(aoi="AOI", filters="Filters", review="Review", rftype="RF Type",
-                 ecs="ECs", weights="Weights", download="Download")
-BREADCRUMB_ORDER <- c("aoi", "filters", "review", "rftype", "ecs", "weights", "download")
+                 ecs="ECs", weights="Weights",
+                 outputs="Outputs", publish="Publish")
+BREADCRUMB_ORDER <- c("aoi", "filters", "review", "rftype", "ecs", "weights",
+                      "outputs", "publish")
 
 # Full-name tooltips for the breadcrumb (shown on hover via bslib::tooltip).
 # STEP_LABELS gives the abbreviated badge text; this gives the full descriptor.
@@ -76,7 +89,8 @@ CRUMB_TOOLTIPS <- c(
   rftype   = "Response Function Type",
   ecs      = "Ecosystem Components",
   weights  = "Weights & effects",
-  download = "Review & Download"
+  outputs  = "Outputs",
+  publish  = "Review & Publish"
 )
 
 
@@ -91,7 +105,7 @@ MAX_DISPLAY_YEAR <- 20
 WIZARD_SECTIONS <- list(
   list(name = "Define", screens = c("aoi", "filters", "review")),
   list(name = "Build",  screens = c("rftype", "ecs", "weights")),
-  list(name = "Export", screens = c("download"))
+  list(name = "Export", screens = c("outputs", "publish"))
 )
 
 
@@ -105,6 +119,17 @@ EC_GROUP_IDS <- unique(ec_labels$subcategory) |>
   tolower() |>
   (\(x) gsub("[^a-z]", "_", x))() |>
   (\(x) paste0("ecgrp_", x))()
+
+
+# ─── Feature flags ────────────────────────────────────────────────────────
+# FEATURE_EC_CONTRIBS controls the per-EC sparkline grid on page 07.
+# Shipped on as a v1 exploration pending feedback from Kat/Sophie. Flip to
+# FALSE and the grid section disappears entirely from page 07 with no other
+# changes required — useful if the addition turns out to not land well.
+FEATURE_EC_CONTRIBS <- TRUE
+# Scenario the sparkline grid renders for. Currently fixed; a future
+# enhancement could let users click a scenario in the hero chart to update.
+FEATURE_EC_CONTRIBS_SCENARIO <- "FIC4"
 
 
 # =============================================================================
@@ -240,6 +265,14 @@ ui <- fluidPage(
       // Scroll to top when navigating between screens.
       Shiny.addCustomMessageHandler('scroll_top', function(m) { window.scrollTo(0, 0); });
 
+      // Mirror state$screen onto a body-level data attribute so CSS can
+      // make per-screen layout decisions (e.g. hiding .sidebar on the
+      // outputs screen). Preserves DOM and input state — the sidebar
+      // inputs persist across navigation because they're not re-rendered.
+      Shiny.addCustomMessageHandler('set_body_screen', function(s) {
+        document.body.dataset.screen = s;
+      });
+
       // Sidebar collapse toggle.
       document.addEventListener('click', function(e) {
         if (e.target.matches('.sidebar-toggle')) {
@@ -368,6 +401,16 @@ ui <- fluidPage(
           btn.classList.toggle('is-selected', btn.dataset.view === view);
         });
         Shiny.setInputValue('chart_view', view, {priority: 'event'});
+      }
+
+      // ── Page 07 EC contributions view toggle (Sparklines / Table).
+      // Same pattern as selectChartView; scoped to .ec-view-toggle-btn so
+      // the chart toggle state is independent.
+      function selectEcView(view) {
+        document.querySelectorAll('.ec-view-toggle-btn').forEach(function(btn) {
+          btn.classList.toggle('is-selected', btn.dataset.view === view);
+        });
+        Shiny.setInputValue('ec_view', view, {priority: 'event'});
       }
     "))
 
@@ -530,6 +573,13 @@ server <- function(input, output, session) {
     session$sendCustomMessage("scroll_top", list())
   }
 
+  # Mirror state$screen onto body[data-screen=...] so CSS can hide layout
+  # chrome (like .sidebar) per-screen without re-rendering the sidebar
+  # DOM and losing its input state.
+  observe({
+    session$sendCustomMessage("set_body_screen", state$screen)
+  })
+
   # ── Forward navigation (Next / Compute RFs / Looks good) ─────────────────
   # This handler does double duty: it advances the screen AND triggers
   # data loading at key transition points (review→rftype, rftype→species).
@@ -623,6 +673,41 @@ server <- function(input, output, session) {
     }
   }, ignoreInit = TRUE)
 
+
+
+  # ── Page 08 form sync ────────────────────────────────────────────────────
+  # The RF Details form on page 08 uses _p08-suffixed input IDs so it can
+  # coexist with the always-rendered sidebar inputs without DOM-id
+  # collisions. These observers keep the two surfaces in sync: editing
+  # in either place mirrors to the other, so input$<canonical> always
+  # reflects the user's latest edit no matter where they typed it.
+  #
+  # ignoreInit = TRUE prevents the initial "" value of either side from
+  # clobbering the other on app start. The identical() guard short-circuits
+  # the observer feedback loop (A updates B; B's observer sees the change
+  # and tries to update A; identical() returns TRUE so A is left alone).
+  sync_text_input_pair <- function(id_a, id_b) {
+    observeEvent(input[[id_a]], {
+      val <- input[[id_a]]
+      if (!identical(val, input[[id_b]])) {
+        updateTextInput(session, id_b, value = val %||% "")
+      }
+    }, ignoreInit = TRUE)
+    observeEvent(input[[id_b]], {
+      val <- input[[id_b]]
+      if (!identical(val, input[[id_a]])) {
+        updateTextInput(session, id_a, value = val %||% "")
+      }
+    }, ignoreInit = TRUE)
+  }
+
+  sync_text_input_pair("hvra_name",       "hvra_name_p08")
+  sync_text_input_pair("hvra_sci",        "hvra_sci_p08")
+  sync_text_input_pair("desc",            "desc_p08")
+  sync_text_input_pair("authors_text",    "authors_text_p08")
+  sync_text_input_pair("assumptions",     "assumptions_p08")
+  sync_text_input_pair("workshop_notes",  "workshop_notes_p08")
+  sync_text_input_pair("refs",            "refs_p08")
 
 
   # ── Reset (start over) ───────────────────────────────────────────────────
@@ -1514,7 +1599,17 @@ server <- function(input, output, session) {
         })
       ),
 
-      # ── Right column A: importance picker (visible unless fx-range) ─────
+      # ── Right column A: importance picker (visible on ALL rows) ────────
+      # NB: previously hidden on Range rows via .ec-row.fx-range .ec-
+      # importance-picker { display: none; }. That CSS rule was removed
+      # because the underlying math (compute_weighted_de_rf in
+      # functions.R) multiplies Range rows' rf_value by this importance
+      # value too -- so hiding the picker meant Range rows were silently
+      # being weighted by a value the user couldn't see or edit. See the
+      # ec-importance-help-range note below for the user-facing message.
+      # >>> PENDING KAT REVIEW: if Kat decides Range mode is unweighted,
+      # >>> re-add the display:none rule AND patch functions.R to skip
+      # >>> the wt multiplication for Range rows. See Q&A doc.
       div(class = "ec-importance-picker",
         tags$span(class = "ec-importance-label", "Importance"),
         div(class = "ec-importance-buttons",
@@ -1530,6 +1625,14 @@ server <- function(input, output, session) {
           tags$span(class = "ec-importance-anchor", "crit")
         )
       ),
+
+      # Helper text shown only on Range rows -- flags that the importance
+      # picker above is in effect even though the layout might suggest it
+      # only matters for Pos/Neg. Pending Kat's structural decision; see
+      # the comment above the importance picker for what to change if she
+      # rules Range mode unweighted.
+      div(class = "ec-importance-help-range",
+          "Range mode also uses this weight in the combined-RF math."),
 
       # ── Right column B: min/max inputs (visible only when fx-range) ─────
       # Leading "Range" row label (shared 7rem width with Effect / Importance)
@@ -1575,7 +1678,7 @@ server <- function(input, output, session) {
   # Download row is the existing v0.1 button strip — slated for its own
   # design pass. EC config and Fact sheet sections retain the existing DT
   # / uiOutput renderers, just wrapped in <details> cards.
-  render_download <- function() {
+  render_outputs <- function() {
     nm       <- input$hvra_name %||% "Unnamed HVRA"
     sci      <- input$hvra_sci  %||% ""
     name_str <- if (nzchar(sci)) paste0(nm, " (", sci, ")") else nm
@@ -1587,44 +1690,74 @@ server <- function(input, output, session) {
         div(class = "page-header-numeral", "07"),
         div(class = "page-header-overline",
           tags$span(class = "page-header-step", "Export"),
-          tags$span("· Download")
+          tags$span("· Outputs")
         ),
-        h1(tags$strong("Your RF"), " ", tags$em("is ready.")),
-        p("The weighted response function for ", tags$strong(name_str),
-          " across six wildfire intensity classes. ",
-          "Toggle to a year-10 snapshot, scan the table, download the data.")
+        h1(tags$strong("Here's your RF."), " ",
+           tags$em("Make sure the science is right.")),
+        p("Hero curve, 10-year summary, per-EC contributions, and the full ",
+          "data table. Continue to ", tags$strong("Review & Download"),
+          " to add final notes and download.")
       ),
 
-      # ── Chart card (toggle + ggiraph chart) ──────────────────────────────
-      div(class = "output-card",
-        div(class = "output-card-header",
-          div(class = "output-card-header-text",
-            tags$span(class = "output-card-overline", "WEIGHTED RF"),
-            tags$span(class = "output-card-title",
-              tags$strong("Response"), " ", tags$em("by wildfire intensity"))
+      # ── Outputs row: hero chart card (left, 2fr) + 10-year summary
+      # forest plot (right, 1fr). Collapses to single column under 960px
+      # via the .outputs-row CSS.
+      div(class = "outputs-row",
+
+        # Chart card (toggle + ggiraph chart) — unchanged from previous.
+        div(class = "output-card",
+          div(class = "output-card-header",
+            div(class = "output-card-header-text",
+              tags$span(class = "output-card-overline", "WEIGHTED RF · TIME SERIES"),
+              tags$span(class = "output-card-title",
+                tags$strong("Response"), " ", tags$em("over thirty years"))
+            ),
+            # Chart-view toggle (TIME SERIES / BAR) — wired by selectChartView JS.
+            # Year picker for the bar view lives inside rf_chart_swap so it
+            # appears only when the user toggles to bar.
+            div(class = "chart-toggle",
+              tags$button(type = "button",
+                class = "chart-toggle-btn is-selected",
+                `data-view` = "timeseries",
+                onclick = "selectChartView('timeseries');",
+                "Time series"),
+              tags$button(type = "button",
+                class = "chart-toggle-btn",
+                `data-view` = "bar",
+                onclick = "selectChartView('bar');",
+                "Bar")
+            )
           ),
-          # Chart-view toggle (TIME SERIES / BAR) — wired by selectChartView JS.
-          # Year picker for the bar view lives inside rf_chart_swap so it
-          # appears only when the user toggles to bar.
-          div(class = "chart-toggle",
-            tags$button(type = "button",
-              class = "chart-toggle-btn is-selected",
-              `data-view` = "timeseries",
-              onclick = "selectChartView('timeseries');",
-              "Time series"),
-            tags$button(type = "button",
-              class = "chart-toggle-btn",
-              `data-view` = "bar",
-              onclick = "selectChartView('bar');",
-              "Bar")
+          div(class = "output-card-body",
+            div(class = "rf-chart-container",
+              uiOutput("rf_chart_swap")
+            )
           )
         ),
-        div(class = "output-card-body",
-          div(class = "rf-chart-container",
-            uiOutput("rf_chart_swap")
+
+        # 10-year summary forest plot — distills the curves to a single
+        # year (10) showing each scenario's combined RF as a dot. No error
+        # bars yet (variance not wired in).
+        div(class = "output-card",
+          div(class = "output-card-header",
+            div(class = "output-card-header-text",
+              tags$span(class = "output-card-overline", "10-YEAR SUMMARY"),
+              tags$span(class = "output-card-title",
+                tags$strong("QWRA-ready"), " ", tags$em("snapshot"))
+            )
+          ),
+          div(class = "output-card-body",
+            div(class = "rf-chart-container",
+              ggiraph::girafeOutput("rf_summary_forest", height = "auto")
+            )
           )
         )
       ),
+
+      # ── EC contributions grid (feature-flagged) ─────────────────────────
+      # Gated by FEATURE_EC_CONTRIBS at the top of app.R. When the flag is
+      # FALSE the renderUI returns NULL and the section disappears cleanly.
+      uiOutput("rf_ec_contribs"),
 
       # ── Table card (RF values at every t-step) ───────────────────────────
       div(class = "output-card",
@@ -1640,74 +1773,260 @@ server <- function(input, output, session) {
         )
       ),
 
-      # ── Collapsible: per-EC RF breakdown ─────────────────────────────────
-      # The wide table from v0.1: one row per MgmtID x rel.time, with one
-      # column per picked EC plus the Combined column. Year filter dropdown
-      # narrows to a single relative-year if needed. Reactives behind this
-      # (rf_table_wide, filtered_rf_tbl, output$rf_preview_table) are
-      # unchanged from the v0.1 implementation.
-      tags$details(class = "details-card",
-        tags$summary(class = "details-card-summary",
-          tags$span("Per-EC RF breakdown"),
-          tags$span(class = "details-card-chevron")
-        ),
-        div(class = "details-card-body",
-          div(style = "margin-bottom: 0.75rem;",
-            selectInput("rf_year_filter", label = "View year:",
-                        choices = NULL, selected = "All",
-                        width = "150px")
-          ),
-          DT::dataTableOutput("rf_preview_table")
-        )
-      ),
-
-      # ── Collapsible: EC configuration ────────────────────────────────────
-      tags$details(class = "details-card",
-        tags$summary(class = "details-card-summary",
-          tags$span("EC configuration"),
-          tags$span(class = "details-card-chevron")
-        ),
-        div(class = "details-card-body",
-          DT::dataTableOutput("ec_config_table")
-        )
-      ),
-
-      # ── Collapsible: Fact sheet ──────────────────────────────────────────
-      tags$details(class = "details-card",
-        tags$summary(class = "details-card-summary",
-          tags$span("Fact sheet preview"),
-          tags$span(class = "details-card-chevron")
-        ),
-        div(class = "details-card-body",
-          uiOutput("factsheet_preview")
-        )
-      ),
-      # -- Download row (v0.1 placeholder -- slated for its own design pass) --
-      div(class = "download-row-legacy",
-          style = "margin-top: 1.25rem; display: flex; gap: 0.5rem; flex-wrap: wrap;",
-        downloadButton("dl_rf",        "RF outputs (CSV)",   class = "btn btn-outline-secondary"),
-        downloadButton("dl_ec",        "EC config (CSV)",    class = "btn btn-outline-secondary"),
-        downloadButton("dl_factsheet", "Fact sheet (md)",    class = "btn btn-outline-secondary"),
-        downloadButton("dl_all",       "Download all (zip)", class = "btn btn-primary")
-      ),
-
-      # -- Page footer (Back / Start a new RF) --
-      # Matches the .page-footer pattern from pages 02-06: status row + actions
-      # row. The "Start a new RF" button keeps id="btn_reset" so the existing
-      # observer at line ~615 fires (clears all state and returns to AOI).
+      # -- Page footer (Back to weights / Review & Download) --
+      # Per the design handoff, page 07 is now Outputs only -- no form, no
+      # downloads. The three collapsible details cards (Per-EC breakdown,
+      # EC configuration, Fact sheet preview) and the legacy download row
+      # all moved out of this screen in this commit; they will re-appear on
+      # page 08 (Review & Download) when Phase B lands. Their reactive
+      # outputs (output$rf_preview_table, output$ec_config_table,
+      # output$factsheet_preview, the dl_* download handlers) remain
+      # defined in the server logic for Phase B to wire back up.
+      #
+      # The "Review & Download" CTA is intentionally disabled in Phase A
+      # because the target screen does not exist yet. Phase B will:
+      #   - add "publish" to SCREENS
+      #   - enable this button
+      #   - the existing btn_next handler will then advance to render_publish()
       div(class = "page-footer",
         div(class = "page-footer-status",
           div(class = "page-footer-status-mark"),
-          tags$span("RF complete \u00b7 download below or start a fresh wizard")
+          tags$span("RF complete · review & download next")
         ),
         div(class = "page-footer-actions",
           tags$button(id = "btn_back", type = "button",
             class = "btn btn-ghost action-button",
-            tags$span(class = "action-label", "\u2190 Back")
+            tags$span(class = "action-label", "← Back to weights")
           ),
-          tags$button(id = "btn_reset", type = "button",
-            class = "btn btn-ghost action-button",
-            tags$span(class = "action-label", "Start a new RF")
+          tags$button(id = "btn_next", type = "button",
+            class = "btn btn-continue action-button",
+            tags$span(class = "action-label", "Review & Download →")
+          )
+        )
+      )
+    )
+  }
+
+
+  # ── Screen 8: Review & Publish ─────────────────────────────────────────
+  # MVP scope: finalize notes (RF Details form) + EC config recap + fact
+  # sheet preview + downloads. Despite the "publish" screen id and the
+  # "Review & Publish" UX language, MVP only downloads -- no library push.
+  # See SCREENS NOTE near the top of this file.
+  #
+  # Form-field IDs use the _p08 suffix so they don't collide with the
+  # sidebar inputs (hvra_name, hvra_sci, desc, authors_text, assumptions,
+  # workshop_notes, refs) that are still rendered (display:none) on this
+  # screen for input-state persistence. A pair of observers below syncs
+  # values both ways so editing in either place keeps state in sync.
+  # final_thoughts is a NEW field that exists only on this screen.
+  render_publish <- function() {
+    div(class = "main-col",
+
+      # ── Page header ──────────────────────────────────────────────────────
+      div(class = "page-header",
+        div(class = "page-header-numeral", "08"),
+        div(class = "page-header-overline",
+          tags$span(class = "page-header-step", "Export"),
+          tags$span("· Review & Publish")
+        ),
+        h1(tags$strong("Final review."), " ",
+           tags$em("Add notes, then publish.")),
+        p("Add any final thoughts to the RF Details, double-check the EC ",
+          "config, and preview the fact sheet that gets published to the ",
+          "library. Outputs from step 7 travel with you to download.")
+      ),
+
+      # ── RF Details form card ─────────────────────────────────────────────
+      # Pre-fills each field from the corresponding sidebar input on render.
+      # Editing an input on this page fires a sync observer (server logic
+      # below) that writes the value back to the sidebar input, keeping
+      # state consistent whichever surface the user edits on.
+      div(class = "output-card",
+        div(class = "output-card-header",
+          div(class = "output-card-header-text",
+            tags$span(class = "output-card-overline", "RF DETAILS · ADD FINAL THOUGHTS"),
+            tags$span(class = "output-card-title",
+              tags$strong("Author notes"), " ", tags$em("& provenance"))
+          ),
+          tags$span(class = "output-card-flag", "EDITABLE · LAST CHANCE")
+        ),
+        div(class = "output-card-body",
+
+          # Row 1: HVRA common name (required) + Scientific name -- 2-col.
+          div(class = "rf-form-row rf-form-row-2col",
+            div(class = "field",
+              tags$label(class = "field-label field-label-required",
+                         "HVRA common name"),
+              textInput("hvra_name_p08", label = NULL,
+                        value = isolate(input$hvra_name) %||% "",
+                        placeholder = "e.g. Whitebark pine")
+            ),
+            div(class = "field",
+              tags$label(class = "field-label field-label-optional",
+                         "Scientific name"),
+              textInput("hvra_sci_p08", label = NULL,
+                        value = isolate(input$hvra_sci) %||% "",
+                        placeholder = "Pinus albicaulis")
+            )
+          ),
+
+          # Section break
+          div(class = "rf-form-section-label", "Provenance & assumptions"),
+
+          # Row 2: Ecoregion Applicability -- read-only, sourced from AOI.
+          div(class = "field",
+            tags$label(class = "field-label", "Ecoregion applicability"),
+            div(class = "rf-form-readonly",
+              {
+                regions <- state$selected_regions %||% character()
+                if (length(regions) > 0) paste(regions, collapse = ", ")
+                else if (!is.null(state$aoi_stands)) "Uploaded boundary"
+                else "—"
+              }
+            ),
+            div(class = "field-help",
+                "Auto-populated from your AOI selection on step 1.")
+          ),
+
+          # Row 3: Description
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional", "Description"),
+            textAreaInput("desc_p08", label = NULL, rows = 3,
+              value = isolate(input$desc) %||% "",
+              placeholder = "Brief description of what this RF represents — habitat focus, target audience, anything that helps a future user understand it.")
+          ),
+
+          # Row 4: Authors
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional", "Authors"),
+            textAreaInput("authors_text_p08", label = NULL, rows = 3,
+              value = isolate(input$authors_text) %||% "",
+              placeholder = "One per line: Name, Affiliation"),
+            div(class = "field-help", "e.g. K. Duffy, Vibrant Planet")
+          ),
+
+          # Row 5: Assumptions
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional", "Assumptions"),
+            textAreaInput("assumptions_p08", label = NULL, rows = 3,
+              value = isolate(input$assumptions) %||% "",
+              placeholder = "What conditions or limits should a future user know about?")
+          ),
+
+          # Row 6: Workshop Notes
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional", "Workshop notes"),
+            textAreaInput("workshop_notes_p08", label = NULL, rows = 3,
+              value = isolate(input$workshop_notes) %||% "",
+              placeholder = "Date, attendees, key decisions, points of disagreement…"),
+            div(class = "field-help",
+                "Captures the workshop context this RF emerged from.")
+          ),
+
+          # Row 7: Final Thoughts (NEW -- exists only on page 08)
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional",
+                       "Final thoughts ", tags$em("· added after seeing the outputs")),
+            textAreaInput("final_thoughts", label = NULL, rows = 3,
+              value = isolate(input$final_thoughts) %||% "",
+              placeholder = "Anything worth flagging after seeing the curves? Surprising directions, caveats for future users, lessons learned in this workshop…"),
+            div(class = "field-help",
+                "Goes into the published fact sheet — capture what you noticed in the output that future reviewers should know about.")
+          ),
+
+          # Row 8: References
+          div(class = "field", style = "margin-bottom: 0;",
+            tags$label(class = "field-label field-label-optional", "References"),
+            textAreaInput("refs_p08", label = NULL, rows = 3,
+              value = isolate(input$refs) %||% "",
+              placeholder = "Citations, DOIs, links to source studies…")
+          )
+        )
+      ),
+
+      # ── EC Configuration recap ───────────────────────────────────────────
+      # Read-only summary of the weights/effects the user set on page 06.
+      # Pills reuse the .ec-effect-btn .is-selected styling for consistency
+      # with the page 06 toggle buttons. Renderer is output$ec_config_recap.
+      div(class = "output-card",
+        div(class = "output-card-header",
+          div(class = "output-card-header-text",
+            tags$span(class = "output-card-overline", "EC CONFIGURATION · RECAP"),
+            tags$span(class = "output-card-title",
+              tags$strong("Inputs"), " ", tags$em("you set in step 6"))
+          ),
+          tags$span(class = "output-card-flag output-card-flag-readonly",
+                    "READ-ONLY · GO BACK TO EDIT")
+        ),
+        div(class = "output-card-body",
+          uiOutput("ec_config_recap")
+        )
+      ),
+
+      # ── Final RF Details to Download (fact sheet preview) ────────────────
+      # Renamed from "Fact sheet preview" per the user's new framing — this
+      # card shows what gets bundled into the download. Renderer is
+      # output$factsheet_preview (rebuilt with design-system styling).
+      div(class = "output-card",
+        div(class = "output-card-header",
+          div(class = "output-card-header-text",
+            tags$span(class = "output-card-overline", "FACT SHEET · WHAT GETS DOWNLOADED"),
+            tags$span(class = "output-card-title",
+              tags$strong("Final RF Details"), " ", tags$em("to Download"))
+          )
+        ),
+        div(class = "output-card-body",
+          div(class = "factsheet-wrap",
+            uiOutput("factsheet_preview")
+          )
+        )
+      ),
+
+      # ── Page footer ──────────────────────────────────────────────────────
+      # Status pill on the left; navigation + downloads on the right.
+      # Six buttons total: Back, Start new (both ghost), three individual
+      # downloads (ghost), Download all (forest-deep primary). Wraps to a
+      # second row if the viewport gets tight.
+      # Download handlers (output$dl_rf, dl_ec, dl_factsheet, dl_all) are
+      # already defined in the server logic from Phase A; just wiring the
+      # widgets here. The "Start a new RF" button keeps id="btn_reset" so
+      # the existing observer fires (clears all state, returns to AOI).
+      div(class = "page-footer page-footer-publish",
+        div(class = "page-footer-status",
+          div(class = "page-footer-status-mark"),
+          tags$span("Ready to download · 4 files")
+        ),
+        # Two stacked rows on the right: downloads first, navigation second.
+        # The .page-footer-actions-stack wrapper takes the float:right that
+        # .page-footer-actions normally owns, so its two child rows sit
+        # right-aligned on top of each other instead of fighting for one line.
+        div(class = "page-footer-actions-stack",
+          # NB: deliberately no `action-button` class on these download links.
+          # Adding it makes Shiny double-bind the <a> as both an input and an
+          # output, which can interfere with the browser's link-click handling
+          # (the `download` attribute + target="_blank" combo is fragile when
+          # other bindings touch the same element). Visual styling comes from
+          # .btn-ghost / .btn-continue only.
+          div(class = "page-footer-actions",
+            downloadButton("dl_rf",        "RF outputs (CSV)",
+                           class = "btn-ghost"),
+            downloadButton("dl_ec",        "EC config (CSV)",
+                           class = "btn-ghost"),
+            downloadButton("dl_factsheet", "Fact sheet (md)",
+                           class = "btn-ghost"),
+            downloadButton("dl_all",       "Download all (zip)",
+                           class = "btn-continue")
+          ),
+          div(class = "page-footer-actions",
+            tags$button(id = "btn_back", type = "button",
+              class = "btn btn-ghost action-button",
+              tags$span(class = "action-label", "← Back to outputs")
+            ),
+            tags$button(id = "btn_reset", type = "button",
+              class = "btn btn-ghost action-button",
+              tags$span(class = "action-label", "Start a new RF")
+            )
           )
         )
       )
@@ -1726,7 +2045,8 @@ server <- function(input, output, session) {
            "rftype"   = render_rftype(),
            "ecs"      = render_ecs(),
            "weights"  = render_weights(),
-           "download" = render_download(),
+           "outputs"  = render_outputs(),
+           "publish"  = render_publish(),
            div("Unknown screen:", state$screen)
     )
   })
@@ -2666,6 +2986,125 @@ server <- function(input, output, session) {
     render_rf_bar(d$combined, year = target)
   })
 
+  # 10-year summary forest plot. Companion to the time-series chart;
+  # shows each scenario's combined RF at year 10 as a dot on a horizontal
+  # axis. See render_rf_summary_forest() in R/charts.R for chart details.
+  output$rf_summary_forest <- ggiraph::renderGirafe({
+    d <- rf_plot_data()
+    if (is.null(d)) return(NULL)
+    render_rf_summary_forest(d$combined, year = 10)
+  })
+
+  # EC contributions grid (page 07). Gated by FEATURE_EC_CONTRIBS so the
+  # whole exploration can be removed cleanly if Kat doesn't want it.
+  # Builds a 3-column grid of cards, one per picked EC, each showing a
+  # sparkline of that EC's RF curve for FIC4 + the year-10 value.
+  output$rf_ec_contribs <- renderUI({
+    if (!isTRUE(FEATURE_EC_CONTRIBS)) return(NULL)
+    d <- rf_plot_data()
+    if (is.null(d) || is.null(d$per_ec) || nrow(d$per_ec) == 0) return(NULL)
+
+    scenario <- FEATURE_EC_CONTRIBS_SCENARIO
+    picks    <- intersect(unique(d$per_ec$EC), unique(d$per_ec$EC))
+    if (length(picks) == 0) return(NULL)
+
+    # For each picked EC, render a card: name + badge + sparkline + value@t10.
+    cards <- lapply(picks, function(ec_col) {
+      info       <- ec_labels[ec_labels$column == ec_col, ]
+      label      <- if (nrow(info) > 0) info$label[1] else ec_col
+      category   <- if (nrow(info) > 0) info$subcategory[1] else ""
+      spark_id   <- paste0("rf_ec_spark_", gsub("[^a-zA-Z0-9]", "_", ec_col))
+      # Value at t=10 for this EC under the chosen scenario.
+      t10_val <- d$per_ec |>
+        dplyr::filter(EC == ec_col, MgmtID == scenario, rel.time == 10) |>
+        dplyr::pull(median_rf)
+      val_str <- if (length(t10_val) == 0 || is.na(t10_val[1])) {
+        "—"
+      } else {
+        v <- t10_val[1]
+        paste0(if (v >= 0) "+" else "", formatC(v, format = "f", digits = 2))
+      }
+      val_class <- if (length(t10_val) > 0 && !is.na(t10_val[1])) {
+        if (t10_val[1] < 0) "ec-contrib-val ec-contrib-val-neg"
+        else if (t10_val[1] > 0) "ec-contrib-val ec-contrib-val-pos"
+        else "ec-contrib-val ec-contrib-val-zero"
+      } else {
+        "ec-contrib-val ec-contrib-val-zero"
+      }
+
+      div(class = "output-card ec-contrib-card",
+        div(class = "ec-contrib-head",
+          div(class = "ec-contrib-title", label),
+          tags$span(class = "ec-row-badge", toupper(category))
+        ),
+        div(class = "ec-contrib-spark",
+          ggiraph::girafeOutput(spark_id, height = "auto")
+        ),
+        div(class = "ec-contrib-foot",
+          tags$span(class = val_class, val_str),
+          tags$span(class = "ec-contrib-foot-label",
+                    sprintf("contribution at t10 · %s", scenario))
+        )
+      )
+    })
+
+    # Render each sparkline output dynamically.
+    lapply(picks, function(ec_col) {
+      spark_id <- paste0("rf_ec_spark_", gsub("[^a-zA-Z0-9]", "_", ec_col))
+      local({
+        col <- ec_col
+        id  <- spark_id
+        output[[id]] <<- ggiraph::renderGirafe({
+          render_rf_ec_sparkline(d$per_ec, col,
+                                 scenario = FEATURE_EC_CONTRIBS_SCENARIO)
+        })
+      })
+    })
+
+    # View toggle (Sparklines / Table) — same shape as the chart-toggle on
+    # the hero chart card. Default view is sparklines; the table view shows
+    # the per-EC RF breakdown DT (output$rf_preview_table) with full year
+    # range (no year filter — input$rf_year_filter NULL → table returns "All").
+    view <- input$ec_view %||% "sparklines"
+    body <- if (view == "table") {
+      div(class = "ec-contrib-table-wrap",
+        DT::dataTableOutput("rf_preview_table")
+      )
+    } else {
+      div(class = "ec-contribs-grid", cards)
+    }
+
+    div(class = "output-card",
+      div(class = "output-card-header",
+        div(class = "output-card-header-text",
+          tags$span(class = "output-card-overline",
+                    "EC CONTRIBUTIONS · HOW EACH COMPONENT PULLED THE CURVE"),
+          tags$span(class = "output-card-title",
+            tags$strong("Per-EC"), " ", tags$em("contribution"))
+        ),
+        # EC view toggle. Mirrors .chart-toggle on the hero chart for
+        # visual + interaction consistency. Wired by selectEcView JS.
+        div(class = "chart-toggle ec-view-toggle",
+          tags$button(type = "button",
+            class = paste("chart-toggle-btn ec-view-toggle-btn",
+                          if (view == "sparklines") "is-selected" else ""),
+            `data-view` = "sparklines",
+            onclick = "selectEcView('sparklines');",
+            "Sparklines"),
+          tags$button(type = "button",
+            class = paste("chart-toggle-btn ec-view-toggle-btn",
+                          if (view == "table") "is-selected" else ""),
+            `data-view` = "table",
+            onclick = "selectEcView('table');",
+            "Table")
+        )
+      ),
+      div(class = "output-card-body",
+        body
+      )
+    )
+  })
+
   # Custom HTML table (vs DT) for full design-system control: mono headers,
   # negatives in red, italic baseline row. See render_rf_table_html() in
   # R/charts.R.
@@ -2850,6 +3289,81 @@ server <- function(input, output, session) {
     dt
   })
 
+  # ── EC Configuration recap (page 08) ───────────────────────────────────
+  # Custom HTML table (vs DT) for full design-system control. Reads the
+  # same wts/fxs/rngs state as output$ec_config_table; renders a clean
+  # Weight column ("3/5") and pill-styled Effect column reusing the
+  # existing .ec-effect-btn .is-selected styling from page 06 (per the
+  # earlier "reuse existing chip/effect-btn styling" decision).
+  output$ec_config_recap <- renderUI({
+    picks <- selected_ecs()
+    if (length(picks) == 0) {
+      return(div(class = "rf-table-empty", "No ECs selected."))
+    }
+    wts  <- state$ec_weights
+    fxs  <- state$ec_effects
+    rngs <- state$ec_ranges
+
+    rows <- lapply(picks, function(col) {
+      info  <- ec_labels[ec_labels$column == col, ]
+      label <- if (nrow(info) > 0) info$label[1]       else col
+      cat   <- if (nrow(info) > 0) info$subcategory[1] else ""
+      unit  <- if (nrow(info) > 0) info$unit[1]        else ""
+      w     <- as.integer(wts[[col]] %||% 3L)
+      eff   <- fxs[[col]] %||% "Positive"
+      eff_short <- switch(eff,
+                          "Positive" = "POS",
+                          "Negative" = "NEG",
+                          "Range"    = "RANGE",
+                          toupper(eff))
+      eff_icon <- switch(eff,
+                         "Positive" = "↗",
+                         "Negative" = "↘",
+                         "Range"    = "∧",
+                         "")
+      rng_str <- if (eff == "Range" && !is.null(rngs[[col]]) &&
+                     !all(is.na(rngs[[col]]))) {
+        mn <- rngs[[col]][1]; mx <- rngs[[col]][2]
+        paste0(format(mn), " - ", format(mx),
+               if (nzchar(unit)) paste0(" ", unit) else "")
+      } else {
+        "—"
+      }
+
+      htmltools::tags$tr(class = "ec-recap-row",
+        htmltools::tags$td(class = "ec-recap-cell ec-recap-cell-ec", label),
+        htmltools::tags$td(class = "ec-recap-cell ec-recap-cell-cat", cat),
+        htmltools::tags$td(class = "ec-recap-cell ec-recap-cell-weight",
+          htmltools::HTML(sprintf(
+            "<strong>%d</strong><span class='ec-recap-weight-denom'>/5</span>",
+            w))
+        ),
+        htmltools::tags$td(class = "ec-recap-cell ec-recap-cell-effect",
+          htmltools::tags$span(
+            class = paste("ec-effect-btn ec-recap-pill is-selected"),
+            `data-effect` = eff,
+            htmltools::tags$span(class = "ec-effect-icon", eff_icon),
+            htmltools::tags$span(eff_short)
+          )
+        ),
+        htmltools::tags$td(class = "ec-recap-cell ec-recap-cell-range", rng_str)
+      )
+    })
+
+    htmltools::tags$table(class = "ec-recap-table",
+      htmltools::tags$thead(
+        htmltools::tags$tr(
+          htmltools::tags$th(class = "ec-recap-th", "EC"),
+          htmltools::tags$th(class = "ec-recap-th", "Category"),
+          htmltools::tags$th(class = "ec-recap-th", "Weight"),
+          htmltools::tags$th(class = "ec-recap-th", "Effect"),
+          htmltools::tags$th(class = "ec-recap-th", "Range / Settings")
+        )
+      ),
+      htmltools::tags$tbody(rows)
+    )
+  })
+
   # ── EC config table (download screen) ──────────────────────────────────
   # Same "compact hover row-border" class as the per-EC breakdown so both
   # DT tables share the design-system look.
@@ -2863,7 +3377,13 @@ server <- function(input, output, session) {
       dplyr::mutate(
         Importance = as.integer(wts[[column]] %||% 3L),
         Effect     = fxs[[column]] %||% "Positive",
-        Range      = if (!is.null(rngs[[column]]) && !all(is.na(rngs[[column]])))
+        # Range cell is gated on Effect to match the recap and markdown
+        # surfaces; without this, stale min/max from a prior mode toggle
+        # leaks into the row even when Effect is Pos/Neg. See the inline
+        # note in build_ec_csv() for the full context.
+        Range      = if (Effect == "Range" &&
+                         !is.null(rngs[[column]]) &&
+                         !all(is.na(rngs[[column]])))
                        paste(rngs[[column]], collapse = " \u2013 ") else "\u2014"
       ) |>
       dplyr::ungroup() |>
@@ -2877,17 +3397,76 @@ server <- function(input, output, session) {
   })
 
   # ── Fact sheet preview ─────────────────────────────────────────────────
+  # \u2500\u2500 Fact sheet preview (page 08) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  # Renders the published fact-sheet content as a white-paper card meant
+  # to read like the eventual PDF output. Pulls from the same input$* /
+  # state$* fields used by build_factsheet() (the markdown download), so
+  # the preview here matches what gets bundled into the download.
   output$factsheet_preview <- renderUI({
-    nm <- input$hvra_name %||% "Unnamed HVRA"
-    HTML(paste0(
-      "<h3>", nm, "</h3>",
-      "<p><strong>Ecoregion:</strong> ",
-      if (length(state$selected_regions) > 0) paste(state$selected_regions, collapse = ", ") else "\u2014",
-      "</p>",
-      "<p><strong>Description:</strong> ", input$desc %||% "\u2014", "</p>",
-      "<p><strong>Assumptions:</strong> ", input$assumptions %||% "\u2014", "</p>",
-      "<p><strong>References:</strong> ", input$refs %||% "\u2014", "</p>"
-    ))
+    nm   <- input$hvra_name %||% "Untitled RF"
+    sci  <- input$hvra_sci  %||% ""
+    desc <- input$desc      %||% ""
+    fts  <- input$final_thoughts %||% ""
+    auth <- input$authors_text   %||% ""
+
+    aoi_txt <- if (length(state$selected_regions) > 0) {
+      paste(state$selected_regions, collapse = ", ")
+    } else if (!is.null(state$aoi_stands)) {
+      "Uploaded boundary"
+    } else "\u2014"
+
+    n_stands <- if (!is.null(state$freq_table)) {
+      format(nrow(state$freq_table), big.mark = ",")
+    } else "\u2014"
+    variant <- state$variant %||% "\u2014"
+
+    div(class = "factsheet-card",
+      # Title row: HVRA name + scientific name (italic)
+      div(class = "factsheet-title",
+        tags$strong(nm),
+        if (nzchar(sci)) tagList(" \u00b7 ", tags$em(sci))
+      ),
+
+      # 3-up metadata strip
+      div(class = "factsheet-meta",
+        div(class = "factsheet-meta-item",
+          div(class = "factsheet-meta-label", "AOI"),
+          div(class = "factsheet-meta-value", aoi_txt)
+        ),
+        div(class = "factsheet-meta-item",
+          div(class = "factsheet-meta-label", "Stands"),
+          div(class = "factsheet-meta-value", n_stands)
+        ),
+        div(class = "factsheet-meta-item",
+          div(class = "factsheet-meta-label", "Variant"),
+          div(class = "factsheet-meta-value", variant)
+        )
+      ),
+
+      # Description (only if non-empty)
+      if (nzchar(desc)) tagList(
+        div(class = "factsheet-section",
+          tags$strong("Description."), " ", desc
+        )
+      ),
+
+      # Author's notes (final_thoughts) -- placeholder if empty
+      div(class = "factsheet-section",
+        tags$strong("Author's notes."), " ",
+        if (nzchar(fts)) {
+          tags$span(fts)
+        } else {
+          tags$span(class = "factsheet-placeholder",
+            "Your \"Final thoughts\" above will appear here when published.")
+        }
+      ),
+
+      # Authors (only if non-empty)
+      div(class = "factsheet-section",
+        tags$strong("Authors."), " ",
+        if (nzchar(auth)) auth else tags$span(class = "factsheet-placeholder", "\u2014")
+      )
+    )
   })
 
 
@@ -2908,50 +3487,101 @@ server <- function(input, output, session) {
     )
   }
 
-  # EC config CSV: one row per selected EC with user's weight/effect/range settings
+  # EC config CSV: one row per selected EC with user's weight/effect/range
+  # settings.
+  #
+  # Min/Max are gated on Effect == "Range". state$ec_ranges can hold stale
+  # values from a prior mode toggle (the page-06 UI hides the min/max
+  # inputs when the row is in Pos/Neg mode but does not clear the
+  # underlying state), so emitting them unconditionally would surface
+  # numbers the user can't see and didn't intend to publish. Pos/Neg rows
+  # get NA_real_, which the downstream markdown table renders as "—".
   build_ec_csv <- function() {
     picks <- isolate(selected_ecs())
     if (length(picks) == 0) return(data.frame())
     wts <- state$ec_weights; fxs <- state$ec_effects; rngs <- state$ec_ranges
+
+    eff <- vapply(picks, function(c) fxs[[c]] %||% "Positive", character(1))
+
+    range_val <- function(c, idx) {
+      if (identical(fxs[[c]], "Range") && !is.null(rngs[[c]])) rngs[[c]][idx]
+      else NA_real_
+    }
+
     data.frame(
       Column     = picks,
       Label      = vapply(picks, function(c) {
         r <- ec_labels$label[ec_labels$column == c]; if (length(r)) r[1] else c
       }, character(1)),
       Importance = vapply(picks, function(c) as.integer(wts[[c]] %||% 3L), integer(1)),
-      Effect     = vapply(picks, function(c) fxs[[c]] %||% "Positive", character(1)),
-      Min        = vapply(picks, function(c) if (!is.null(rngs[[c]])) rngs[[c]][1] else NA_real_, numeric(1)),
-      Max        = vapply(picks, function(c) if (!is.null(rngs[[c]])) rngs[[c]][2] else NA_real_, numeric(1)),
+      Effect     = eff,
+      Min        = vapply(picks, function(c) range_val(c, 1), numeric(1)),
+      Max        = vapply(picks, function(c) range_val(c, 2), numeric(1)),
       stringsAsFactors = FALSE
     )
   }
 
-  # Fact sheet markdown: HVRA metadata + EC table
+  # Fact sheet markdown: HVRA metadata + EC table.
+  # Reads from base input IDs (input$hvra_name, input$desc, ...); the
+  # page-08 textInputs use _p08 suffixes but are kept in lock-step via
+  # the sync_text_input_pair() observers, so reading the base ID gets
+  # the user's latest edit either way.
+  #
+  # nm is guaranteed non-empty by the page-01 gate (Continue is disabled
+  # until input$hvra_name has non-whitespace content), so no defensive
+  # fallback. sci, desc, and the rest stay optional and use %||% "" so
+  # nzchar() in the section() helper returns FALSE rather than erroring
+  # on NULL.
+  #
+  # Ecoregion applicability is *not* a user input -- it's derived from
+  # the AOI selection (state$selected_regions for map mode,
+  # state$aoi_stands for file upload), mirroring the read-only display
+  # on page 08.
   build_factsheet <- function() {
-    nm   <- input$hvra_name %||% "Unnamed HVRA"
-    sci  <- input$hvra_sci %||% ""
-    desc <- input$desc %||% ""
-    eco  <- input$ecoregion_appl %||% ""
-    auth <- input$authors_text %||% ""
-    assu <- input$assumptions %||% ""
-    refs <- input$refs %||% ""
+    nm   <- input$hvra_name
+    sci  <- input$hvra_sci       %||% ""
+    desc <- input$desc           %||% ""
+    auth <- input$authors_text   %||% ""
+    assu <- input$assumptions    %||% ""
     notes <- input$workshop_notes %||% ""
+    fts  <- input$final_thoughts %||% ""
+    refs <- input$refs           %||% ""
+
+    regions <- state$selected_regions %||% character()
+    eco <- if (length(regions) > 0)        paste(regions, collapse = ", ")
+           else if (!is.null(state$aoi_stands)) "Uploaded boundary"
+           else                                  ""
+
     ec_tbl <- build_ec_csv()
     ec_md <- if (nrow(ec_tbl) > 0) {
       paste0("| ", ec_tbl$Label, " | ", ec_tbl$Importance, " | ", ec_tbl$Effect, " |",
              collapse = "\n")
     } else "No ECs selected"
+
+    # Section helper: emit a `## Heading\n\nbody` block when body is
+    # non-empty, otherwise emit "" so the outer paste skips the section
+    # entirely (no stranded headings on the published fact sheet).
+    section <- function(heading, body) {
+      if (!nzchar(body)) return("")
+      paste("", paste0("## ", heading), "", body, sep = "\n")
+    }
+
     paste(
       paste0("# ", nm),
       if (nzchar(sci)) paste0("*", sci, "*") else "",
-      "", "## Description", desc,
-      "", "## Ecoregion applicability", eco,
-      "", "## Authors", auth,
-      "", "## Assumptions", assu,
-      "", "## EC Configuration",
-      "| EC | Importance | Effect |", "| --- | --- | --- |", ec_md,
-      "", "## References", refs,
-      if (nzchar(notes)) paste("", "## Workshop Notes", notes) else "",
+      section("Ecoregion applicability", eco),
+      section("Description",             desc),
+      section("Authors",                 auth),
+      section("Assumptions",             assu),
+      "",
+      "## EC Configuration",
+      "",
+     "| EC | Importance | Effect | Min | Max |",
+      "| --- | --- | --- | --- | --- |",
+      ec_md,
+      section("Workshop notes",  notes),
+      section("Final thoughts",  fts),
+      section("References",      refs),
       sep = "\n"
     )
   }

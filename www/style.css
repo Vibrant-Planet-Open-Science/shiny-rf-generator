@@ -421,6 +421,19 @@ h6 { font-size: var(--text-base); }
   position: sticky;
   top: var(--space-4);
 }
+
+/* Hide the RF Details sidebar on the outputs screen (page 07) so the
+   review charts and tables get full horizontal width. The sidebar form
+   inputs are still in the DOM — just visually suppressed — so values
+   persist when the user navigates back to earlier screens. The dedicated
+   editable form on page 08 (Phase B) will edit the same state$* values
+   the sidebar binds to.
+   Also collapse the .page grid from 2-column to 1-column so the main
+   column actually claims the freed 22rem instead of leaving empty space. */
+body[data-screen="outputs"] .sidebar,
+body[data-screen="publish"] .sidebar { display: none; }
+body[data-screen="outputs"] .page,
+body[data-screen="publish"] .page    { grid-template-columns: 1fr; }
 .sidebar-header {
   display: flex;
   align-items: baseline;
@@ -531,6 +544,42 @@ h6 { font-size: var(--text-base); }
   font-style: italic;
 }
 .sidebar textarea.form-control {
+  resize: vertical;
+  min-height: 4.5rem;
+  line-height: 1.5;
+}
+
+/* Override Bootstrap form-control inside .output-card-body to match
+   design. Mirrors the .sidebar rules above for the page 08 RF Details
+   form (which lives in .output-card-body, not .sidebar). Without this,
+   Shiny's default 300px width on .shiny-input-container would constrain
+   the form fields. */
+.output-card-body .shiny-input-container {
+  width: 100%;
+  margin-bottom: 0;
+}
+.output-card-body .form-control {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--vp-ink);
+  background: white;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: 0.5625rem 0.6875rem;
+  box-shadow: none;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.output-card-body .form-control:focus {
+  outline: none;
+  border-color: var(--vp-orange);
+  box-shadow: var(--focus-ring);
+}
+.output-card-body .form-control::placeholder {
+  color: var(--vp-ink-light);
+  font-style: italic;
+}
+.output-card-body textarea.form-control {
   resize: vertical;
   min-height: 4.5rem;
   line-height: 1.5;
@@ -923,12 +972,42 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   0%, 100% { box-shadow: 0 0 0 0 rgba(232, 90, 31, 0.4); }
   50%      { box-shadow: 0 0 0 6px rgba(232, 90, 31, 0); }
 }
-.page-footer-actions { 
-  display: flex; 
+.page-footer-actions {
+  display: flex;
   gap: var(--space-3);
   padding-top: var(--space-8);
   float: right;
  }
+
+/* Page 08 footer variant: downloads on row 1, navigation on row 2.
+   The stack wrapper takes the float:right and top padding that
+   .page-footer-actions normally owns; inner rows reset both so they
+   sit right-aligned and snug under each other. flex-wrap stays on
+   the inner rows so the 4-download row can still wrap on a very narrow
+   viewport. */
+.page-footer-publish .page-footer-actions-stack {
+  float: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-8);
+}
+.page-footer-publish .page-footer-actions {
+  float: none;
+  padding-top: 0;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+/* Shiny's downloadButton renders as <a class="btn btn-default
+   shiny-download-link ..."> with a default download icon. The btn-ghost
+   class we pass via downloadButton(..., class = "btn-ghost ...") gets
+   appended; .btn.btn-ghost CSS already handles styling. The icon needs
+   a small right-margin so it doesn't kiss the label. */
+.page-footer-publish .shiny-download-link .fa,
+.page-footer-publish .shiny-download-link .fas {
+  margin-right: 0.375rem;
+}
 
 /* Continue button — overrides Bootstrap btn defaults to match design */
 .btn.btn-continue {
@@ -1774,13 +1853,34 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   color: var(--vp-orange-deep);
 }
 
-/* ── Right column A: importance picker (default visible) ─────────── */
+/* ── Right column A: importance picker (visible on ALL rows) ─────── */
+/* Previously hidden on .fx-range rows. That rule was removed because
+   the math (compute_weighted_de_rf) multiplies Range rows by this
+   importance value too -- hiding the picker meant Range rows were
+   silently weighted by a value the user couldn't see or edit.
+   PENDING KAT REVIEW: if Range is meant to be unweighted, re-add the
+   display:none rule here AND skip the wt multiplication in
+   functions.R. See render_ec_weight_row() in app.R for the matching
+   note. */
 .ec-importance-picker {
   display: flex;
   align-items: center;
   gap: var(--space-3);
 }
-.ec-row.fx-range .ec-importance-picker { display: none; }
+/* Helper text shown only on Range rows -- explains that the picker
+   above still drives the math for Range mode. Padding-left matches
+   .ec-row-stats so the line reads as a footnote to the picker rather
+   than a free-standing element. */
+.ec-importance-help-range {
+  display: none;
+  padding-left: 7rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--vp-ink-mid);
+  letter-spacing: 0.04em;
+}
+.ec-row.fx-range .ec-importance-help-range { display: block; }
 
 /* .ec-importance-label styling lives in the shared rule above with
    .ec-effect-label so both labels match width + typography. */
@@ -1947,6 +2047,190 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   background: var(--vp-paper);
 }
 
+/* Right-side flag inside .output-card-header (e.g. "EDITABLE · LAST CHANCE"
+   on the page 08 RF Details card). Mono eyebrow, success-green so it reads
+   as a positive affordance ("you can still edit"). */
+.output-card-flag {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vp-success);
+  font-weight: 600;
+}
+/* Read-only variant of the right-side flag (page 08 EC config recap).
+   Muted gray to read as "view-only" rather than the actionable green
+   "EDITABLE · LAST CHANCE" flag on the RF Details card. */
+.output-card-flag-readonly {
+  color: var(--vp-ink-light);
+}
+
+
+/* ── Page 08 EC Configuration recap table ─────────────────────────────── */
+.ec-recap-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+}
+.ec-recap-th {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vp-ink-light);
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--vp-paper);
+}
+.ec-recap-row {
+  transition: background var(--t-fast);
+}
+.ec-recap-row:hover {
+  background: var(--vp-paper-warm);
+}
+.ec-recap-cell {
+  padding: var(--space-3) var(--space-4);
+  color: var(--vp-ink);
+  border-top: 1px solid var(--border-faint);
+  vertical-align: middle;
+}
+.ec-recap-cell-ec {
+  font-weight: 500;
+}
+.ec-recap-cell-cat {
+  color: var(--vp-ink-mid);
+}
+.ec-recap-cell-weight {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+}
+.ec-recap-weight-denom {
+  color: var(--vp-ink-light);
+  font-size: var(--text-sm);
+  margin-left: 0.125rem;
+}
+.ec-recap-cell-range {
+  font-family: var(--font-mono);
+  color: var(--vp-ink-mid);
+  text-align: right;
+  white-space: nowrap;
+}
+/* Slightly tighter padding on the recap pill so it fits neatly in a table
+   cell (vs. the page 06 button context). Otherwise inherits all colour /
+   font / hover states from .ec-effect-btn .is-selected by class-stacking. */
+.ec-recap-pill {
+  min-width: 5.5rem;
+  padding: 0.125rem var(--space-3);
+  cursor: default;  /* not actually clickable here */
+}
+
+
+/* ── Page 08 Fact sheet preview card ──────────────────────────────────── */
+.factsheet-wrap {
+  background: var(--vp-paper);  /* cream wrapper to make the white card pop */
+  padding: var(--space-5);
+  border-radius: var(--radius-md);
+}
+.factsheet-card {
+  background: white;
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-md);
+  padding: var(--space-6) var(--space-8);
+  max-width: 42rem;
+  margin: 0 auto;
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-display);
+  color: var(--vp-ink);
+  line-height: 1.6;
+}
+.factsheet-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--vp-ink);
+  margin-bottom: var(--space-4);
+}
+.factsheet-title em {
+  font-weight: 400;
+  font-style: italic;
+  color: var(--vp-ink-mid);
+}
+.factsheet-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  margin-bottom: var(--space-4);
+  border-top: 1px solid var(--border-faint);
+  border-bottom: 1px solid var(--border-faint);
+}
+.factsheet-meta-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vp-ink-light);
+  margin-bottom: 0.125rem;
+}
+.factsheet-meta-value {
+  font-size: var(--text-sm);
+  color: var(--vp-ink);
+}
+.factsheet-section {
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+}
+.factsheet-section:last-child {
+  margin-bottom: 0;
+}
+.factsheet-placeholder {
+  color: var(--vp-ink-light);
+  font-style: italic;
+}
+
+
+/* ── Page 08 RF Details form helpers ────────────────────────────────────
+   Reuses the existing .field / .field-label / .field-help styling already
+   defined for the sidebar; these classes only add layout / structure that
+   the sidebar didn't need (multi-column rows, section breaks, read-only
+   display rows). */
+.rf-form-row {
+  margin-bottom: var(--space-5);
+}
+.rf-form-row-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+}
+.rf-form-row-2col .field {
+  margin-bottom: 0;
+}
+@media (max-width: 640px) {
+  .rf-form-row-2col { grid-template-columns: 1fr; }
+}
+.rf-form-section-label {
+  margin-top: var(--space-6);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--vp-orange-deep);
+}
+.rf-form-readonly {
+  padding: var(--space-3) var(--space-4);
+  background: var(--vp-paper-warm);
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--vp-ink);
+}
+
 
 /* ── Chart-view toggle (TIME SERIES / BAR · T10) ──────────────── */
 .chart-toggle {
@@ -1985,6 +2269,110 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
 }
 .rf-chart-container .girafe_container_std {
   width: 100% !important;
+}
+
+/* Page 07 outputs row: hero chart (left) + 10-year summary forest plot
+   (right). Collapses to a single column when the viewport gets tight so
+   the panels stack instead of squishing. Uses the existing .output-card
+   chrome for both children — no new card style. */
+.outputs-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+@media (max-width: 960px) {
+  .outputs-row { grid-template-columns: 1fr; }
+}
+
+/* Equal-height cards in .outputs-row: cards stretch to the row's tallest
+   child via grid default, then a flex chain inside lets the chart
+   container claim the body's full height instead of leaving empty space
+   beneath a short SVG (e.g. the forest plot inside the taller hero card). */
+.outputs-row .output-card {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;          /* row gap handles spacing in this context */
+}
+.outputs-row .output-card-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.outputs-row .rf-chart-container {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Page 07 EC contributions grid. 3 columns at desktop, collapses to 2
+   then 1 as the viewport tightens. Each cell is an .output-card that
+   contains: header (EC name + category badge), sparkline area, and a
+   footer with the value-at-t10 readout. */
+.ec-contribs-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+@media (max-width: 800px) {
+  .ec-contribs-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 500px) {
+  .ec-contribs-grid { grid-template-columns: 1fr; }
+}
+.ec-contrib-card {
+  /* Tighter padding than the default .output-card body since each card
+     hosts a small sparkline + label, not a full chart. */
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: 0;
+}
+.ec-contrib-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.ec-contrib-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--vp-ink);
+  font-size: var(--text-base);
+  line-height: 1.2;
+}
+.ec-contrib-spark {
+  width: 100%;
+  min-height: 3rem;
+}
+.ec-contrib-foot {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.ec-contrib-val {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-md);
+}
+.ec-contrib-val-neg { color: var(--vp-danger); }
+.ec-contrib-val-pos { color: var(--vp-forest-dark); }
+.ec-contrib-val-zero { color: var(--vp-ink-light); }
+.ec-contrib-foot-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--vp-ink-light);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.ec-contrib-meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--vp-ink-light);
 }
 
 /* Year picker row that appears above the bar chart only (rendered inside
@@ -2179,8 +2567,17 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   color: var(--vp-ink-light);
   padding-top: var(--space-3);
 }
-.details-card .dataTables_paginate .paginate_button {
-  border-radius: var(--radius-xs) !important;
+/* Specificity bump: include .dataTables_wrapper in the chain so this
+   selector (0,4,0) outweighs DT's default '.dataTables_wrapper
+   .dataTables_paginate .paginate_button' rule (0,3,0). Lets us style the
+   buttons without !important. */
+.details-card .dataTables_wrapper .dataTables_paginate .paginate_button {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  padding: 0.25rem 0.625rem;
+  border-radius: var(--radius-xs);
 }
 .details-card .dataTables_paginate .paginate_button.current,
 .details-card .dataTables_paginate .paginate_button.current:hover {
@@ -2195,5 +2592,77 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
 .details-card table.dataTable thead .sorting_asc:after,
 .details-card table.dataTable thead .sorting_desc:before,
 .details-card table.dataTable thead .sorting_desc:after {
+  color: var(--vp-ink-faint) !important;
+}
+
+/* ── DT styling for the EC contributions table view (page 07) ──────────
+   Mirrors the .details-card DT rules above for the new .ec-contrib-table-wrap
+   context. Same design-system look (mono headers, faint borders, hover,
+   no stripe), without re-scoping the existing rules. */
+.ec-contrib-table-wrap .dataTables_wrapper {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--vp-ink);
+}
+.ec-contrib-table-wrap table.dataTable {
+  border-collapse: collapse !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+.ec-contrib-table-wrap table.dataTable thead th {
+  font-family: var(--font-mono) !important;
+  font-size: var(--text-eyebrow) !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vp-ink-light) !important;
+  border-bottom: 1px solid var(--border-soft) !important;
+  border-top: none !important;
+  background: var(--vp-paper) !important;
+  padding: var(--space-3) var(--space-4) !important;
+}
+.ec-contrib-table-wrap table.dataTable tbody td {
+  padding: var(--space-3) var(--space-4) !important;
+  color: var(--vp-ink);
+  border-top: 1px solid var(--border-faint) !important;
+  background: white !important;
+}
+.ec-contrib-table-wrap table.dataTable.row-border tbody tr:hover td,
+.ec-contrib-table-wrap table.dataTable.hover tbody tr:hover td {
+  background: var(--vp-paper-warm) !important;
+}
+.ec-contrib-table-wrap table.dataTable.stripe tbody tr.odd td,
+.ec-contrib-table-wrap table.dataTable.display tbody tr.odd td {
+  background: white !important;
+}
+.ec-contrib-table-wrap .dataTables_info,
+.ec-contrib-table-wrap .dataTables_paginate {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--vp-ink-light);
+  padding-top: var(--space-3);
+}
+.ec-contrib-table-wrap .dataTables_wrapper .dataTables_paginate .paginate_button {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  padding: 0.25rem 0.625rem;
+  border-radius: var(--radius-xs);
+}
+.ec-contrib-table-wrap .dataTables_paginate .paginate_button.current,
+.ec-contrib-table-wrap .dataTables_paginate .paginate_button.current:hover {
+  background: var(--vp-forest-deep) !important;
+  border-color: var(--vp-forest-deep) !important;
+  color: white !important;
+}
+.ec-contrib-table-wrap table.dataTable thead .sorting:before,
+.ec-contrib-table-wrap table.dataTable thead .sorting:after,
+.ec-contrib-table-wrap table.dataTable thead .sorting_asc:before,
+.ec-contrib-table-wrap table.dataTable thead .sorting_asc:after,
+.ec-contrib-table-wrap table.dataTable thead .sorting_desc:before,
+.ec-contrib-table-wrap table.dataTable thead .sorting_desc:after {
   color: var(--vp-ink-faint) !important;
 }
