@@ -59,13 +59,26 @@ shiny::addResourcePath("www", here::here("www"))
 
 # Screen order — the wizard progresses through these left to right.
 # "species" is conditionally skipped when rf_type == "stand".
-SCREENS <- c("aoi", "filters", "review", "rftype", "ecs", "weights", "download")
+# NOTE on the "publish" screen id: MVP scope is finalize-notes-then-download
+# (no actual publish-to-library action). The id is named "publish" because
+# the design + UX language ("Review & Publish") anticipates a future state
+# where downloads also push the RF to a shared library. For MVP, "publish"
+# is functionally equivalent to "download" -- but the id, label, and UI
+# text intentionally use the forward-looking term so we don't have to
+# rename later when the publish action is wired up.
+SCREENS <- c("aoi", "filters", "review", "rftype", "ecs", "weights",
+             "outputs", "publish")
 
 # Labels shown in the breadcrumb. "species" is omitted from breadcrumb
-# because it's conditional — the breadcrumb always shows 7 steps.
+# because it's conditional — the breadcrumb always shows 8 steps.
+# Page 03 ("review") = AOI/filter setup review.
+# Page 07 ("outputs") = final RF outputs review (no editing).
+# Page 08 ("publish") = finalize notes + download (see SCREENS NOTE above).
 STEP_LABELS <- c(aoi="AOI", filters="Filters", review="Review", rftype="RF Type",
-                 ecs="ECs", weights="Weights", download="Download")
-BREADCRUMB_ORDER <- c("aoi", "filters", "review", "rftype", "ecs", "weights", "download")
+                 ecs="ECs", weights="Weights",
+                 outputs="Outputs", publish="Publish")
+BREADCRUMB_ORDER <- c("aoi", "filters", "review", "rftype", "ecs", "weights",
+                      "outputs", "publish")
 
 # Full-name tooltips for the breadcrumb (shown on hover via bslib::tooltip).
 # STEP_LABELS gives the abbreviated badge text; this gives the full descriptor.
@@ -76,7 +89,8 @@ CRUMB_TOOLTIPS <- c(
   rftype   = "Response Function Type",
   ecs      = "Ecosystem Components",
   weights  = "Weights & effects",
-  download = "Review & Download"
+  outputs  = "Outputs",
+  publish  = "Review & Publish"
 )
 
 
@@ -91,7 +105,7 @@ MAX_DISPLAY_YEAR <- 20
 WIZARD_SECTIONS <- list(
   list(name = "Define", screens = c("aoi", "filters", "review")),
   list(name = "Build",  screens = c("rftype", "ecs", "weights")),
-  list(name = "Export", screens = c("download"))
+  list(name = "Export", screens = c("outputs", "publish"))
 )
 
 
@@ -1611,7 +1625,7 @@ server <- function(input, output, session) {
   # Download row is the existing v0.1 button strip — slated for its own
   # design pass. EC config and Fact sheet sections retain the existing DT
   # / uiOutput renderers, just wrapped in <details> cards.
-  render_download <- function() {
+  render_outputs <- function() {
     nm       <- input$hvra_name %||% "Unnamed HVRA"
     sci      <- input$hvra_sci  %||% ""
     name_str <- if (nzchar(sci)) paste0(nm, " (", sci, ")") else nm
@@ -1733,7 +1747,6 @@ server <- function(input, output, session) {
           ),
           tags$button(id = "btn_next", type = "button",
             class = "btn btn-continue action-button",
-            disabled = "disabled",
             tags$span(class = "action-label", "Review & Download →")
           )
         )
@@ -1753,7 +1766,8 @@ server <- function(input, output, session) {
            "rftype"   = render_rftype(),
            "ecs"      = render_ecs(),
            "weights"  = render_weights(),
-           "download" = render_download(),
+           "outputs"  = render_outputs(),
+           "publish"  = render_publish(),
            div("Unknown screen:", state$screen)
     )
   })

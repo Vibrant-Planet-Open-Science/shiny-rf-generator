@@ -430,8 +430,10 @@ h6 { font-size: var(--text-base); }
    the sidebar binds to.
    Also collapse the .page grid from 2-column to 1-column so the main
    column actually claims the freed 22rem instead of leaving empty space. */
-body[data-screen="download"] .sidebar { display: none; }
-body[data-screen="download"] .page    { grid-template-columns: 1fr; }
+body[data-screen="outputs"] .sidebar,
+body[data-screen="publish"] .sidebar { display: none; }
+body[data-screen="outputs"] .page,
+body[data-screen="publish"] .page    { grid-template-columns: 1fr; }
 .sidebar-header {
   display: flex;
   align-items: baseline;
