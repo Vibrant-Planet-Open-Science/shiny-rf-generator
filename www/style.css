@@ -549,6 +549,42 @@ body[data-screen="publish"] .page    { grid-template-columns: 1fr; }
   line-height: 1.5;
 }
 
+/* Override Bootstrap form-control inside .output-card-body to match
+   design. Mirrors the .sidebar rules above for the page 08 RF Details
+   form (which lives in .output-card-body, not .sidebar). Without this,
+   Shiny's default 300px width on .shiny-input-container would constrain
+   the form fields. */
+.output-card-body .shiny-input-container {
+  width: 100%;
+  margin-bottom: 0;
+}
+.output-card-body .form-control {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--vp-ink);
+  background: white;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: 0.5625rem 0.6875rem;
+  box-shadow: none;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.output-card-body .form-control:focus {
+  outline: none;
+  border-color: var(--vp-orange);
+  box-shadow: var(--focus-ring);
+}
+.output-card-body .form-control::placeholder {
+  color: var(--vp-ink-light);
+  font-style: italic;
+}
+.output-card-body textarea.form-control {
+  resize: vertical;
+  min-height: 4.5rem;
+  line-height: 1.5;
+}
+
 /* ============================================================
    COMPONENT — Main column wrapper (phase 4b)
    ============================================================ */
@@ -936,12 +972,42 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
   0%, 100% { box-shadow: 0 0 0 0 rgba(232, 90, 31, 0.4); }
   50%      { box-shadow: 0 0 0 6px rgba(232, 90, 31, 0); }
 }
-.page-footer-actions { 
-  display: flex; 
+.page-footer-actions {
+  display: flex;
   gap: var(--space-3);
   padding-top: var(--space-8);
   float: right;
  }
+
+/* Page 08 footer variant: downloads on row 1, navigation on row 2.
+   The stack wrapper takes the float:right and top padding that
+   .page-footer-actions normally owns; inner rows reset both so they
+   sit right-aligned and snug under each other. flex-wrap stays on
+   the inner rows so the 4-download row can still wrap on a very narrow
+   viewport. */
+.page-footer-publish .page-footer-actions-stack {
+  float: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-8);
+}
+.page-footer-publish .page-footer-actions {
+  float: none;
+  padding-top: 0;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+/* Shiny's downloadButton renders as <a class="btn btn-default
+   shiny-download-link ..."> with a default download icon. The btn-ghost
+   class we pass via downloadButton(..., class = "btn-ghost ...") gets
+   appended; .btn.btn-ghost CSS already handles styling. The icon needs
+   a small right-margin so it doesn't kiss the label. */
+.page-footer-publish .shiny-download-link .fa,
+.page-footer-publish .shiny-download-link .fas {
+  margin-right: 0.375rem;
+}
 
 /* Continue button — overrides Bootstrap btn defaults to match design */
 .btn.btn-continue {
@@ -1958,6 +2024,190 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
 .output-card-body {
   padding: var(--space-5);
   background: var(--vp-paper);
+}
+
+/* Right-side flag inside .output-card-header (e.g. "EDITABLE · LAST CHANCE"
+   on the page 08 RF Details card). Mono eyebrow, success-green so it reads
+   as a positive affordance ("you can still edit"). */
+.output-card-flag {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vp-success);
+  font-weight: 600;
+}
+/* Read-only variant of the right-side flag (page 08 EC config recap).
+   Muted gray to read as "view-only" rather than the actionable green
+   "EDITABLE · LAST CHANCE" flag on the RF Details card. */
+.output-card-flag-readonly {
+  color: var(--vp-ink-light);
+}
+
+
+/* ── Page 08 EC Configuration recap table ─────────────────────────────── */
+.ec-recap-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+}
+.ec-recap-th {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vp-ink-light);
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--vp-paper);
+}
+.ec-recap-row {
+  transition: background var(--t-fast);
+}
+.ec-recap-row:hover {
+  background: var(--vp-paper-warm);
+}
+.ec-recap-cell {
+  padding: var(--space-3) var(--space-4);
+  color: var(--vp-ink);
+  border-top: 1px solid var(--border-faint);
+  vertical-align: middle;
+}
+.ec-recap-cell-ec {
+  font-weight: 500;
+}
+.ec-recap-cell-cat {
+  color: var(--vp-ink-mid);
+}
+.ec-recap-cell-weight {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+}
+.ec-recap-weight-denom {
+  color: var(--vp-ink-light);
+  font-size: var(--text-sm);
+  margin-left: 0.125rem;
+}
+.ec-recap-cell-range {
+  font-family: var(--font-mono);
+  color: var(--vp-ink-mid);
+  text-align: right;
+  white-space: nowrap;
+}
+/* Slightly tighter padding on the recap pill so it fits neatly in a table
+   cell (vs. the page 06 button context). Otherwise inherits all colour /
+   font / hover states from .ec-effect-btn .is-selected by class-stacking. */
+.ec-recap-pill {
+  min-width: 5.5rem;
+  padding: 0.125rem var(--space-3);
+  cursor: default;  /* not actually clickable here */
+}
+
+
+/* ── Page 08 Fact sheet preview card ──────────────────────────────────── */
+.factsheet-wrap {
+  background: var(--vp-paper);  /* cream wrapper to make the white card pop */
+  padding: var(--space-5);
+  border-radius: var(--radius-md);
+}
+.factsheet-card {
+  background: white;
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-md);
+  padding: var(--space-6) var(--space-8);
+  max-width: 42rem;
+  margin: 0 auto;
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-display);
+  color: var(--vp-ink);
+  line-height: 1.6;
+}
+.factsheet-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--vp-ink);
+  margin-bottom: var(--space-4);
+}
+.factsheet-title em {
+  font-weight: 400;
+  font-style: italic;
+  color: var(--vp-ink-mid);
+}
+.factsheet-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  margin-bottom: var(--space-4);
+  border-top: 1px solid var(--border-faint);
+  border-bottom: 1px solid var(--border-faint);
+}
+.factsheet-meta-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vp-ink-light);
+  margin-bottom: 0.125rem;
+}
+.factsheet-meta-value {
+  font-size: var(--text-sm);
+  color: var(--vp-ink);
+}
+.factsheet-section {
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+}
+.factsheet-section:last-child {
+  margin-bottom: 0;
+}
+.factsheet-placeholder {
+  color: var(--vp-ink-light);
+  font-style: italic;
+}
+
+
+/* ── Page 08 RF Details form helpers ────────────────────────────────────
+   Reuses the existing .field / .field-label / .field-help styling already
+   defined for the sidebar; these classes only add layout / structure that
+   the sidebar didn't need (multi-column rows, section breaks, read-only
+   display rows). */
+.rf-form-row {
+  margin-bottom: var(--space-5);
+}
+.rf-form-row-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+}
+.rf-form-row-2col .field {
+  margin-bottom: 0;
+}
+@media (max-width: 640px) {
+  .rf-form-row-2col { grid-template-columns: 1fr; }
+}
+.rf-form-section-label {
+  margin-top: var(--space-6);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--vp-orange-deep);
+}
+.rf-form-readonly {
+  padding: var(--space-3) var(--space-4);
+  background: var(--vp-paper-warm);
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--vp-ink);
 }
 
 

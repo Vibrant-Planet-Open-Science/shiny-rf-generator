@@ -675,6 +675,41 @@ server <- function(input, output, session) {
 
 
 
+  # ── Page 08 form sync ────────────────────────────────────────────────────
+  # The RF Details form on page 08 uses _p08-suffixed input IDs so it can
+  # coexist with the always-rendered sidebar inputs without DOM-id
+  # collisions. These observers keep the two surfaces in sync: editing
+  # in either place mirrors to the other, so input$<canonical> always
+  # reflects the user's latest edit no matter where they typed it.
+  #
+  # ignoreInit = TRUE prevents the initial "" value of either side from
+  # clobbering the other on app start. The identical() guard short-circuits
+  # the observer feedback loop (A updates B; B's observer sees the change
+  # and tries to update A; identical() returns TRUE so A is left alone).
+  sync_text_input_pair <- function(id_a, id_b) {
+    observeEvent(input[[id_a]], {
+      val <- input[[id_a]]
+      if (!identical(val, input[[id_b]])) {
+        updateTextInput(session, id_b, value = val %||% "")
+      }
+    }, ignoreInit = TRUE)
+    observeEvent(input[[id_b]], {
+      val <- input[[id_b]]
+      if (!identical(val, input[[id_a]])) {
+        updateTextInput(session, id_a, value = val %||% "")
+      }
+    }, ignoreInit = TRUE)
+  }
+
+  sync_text_input_pair("hvra_name",       "hvra_name_p08")
+  sync_text_input_pair("hvra_sci",        "hvra_sci_p08")
+  sync_text_input_pair("desc",            "desc_p08")
+  sync_text_input_pair("authors_text",    "authors_text_p08")
+  sync_text_input_pair("assumptions",     "assumptions_p08")
+  sync_text_input_pair("workshop_notes",  "workshop_notes_p08")
+  sync_text_input_pair("refs",            "refs_p08")
+
+
   # ── Reset (start over) ───────────────────────────────────────────────────
   observeEvent(input$btn_reset, {
     state$screen           <- "aoi"
@@ -1748,6 +1783,232 @@ server <- function(input, output, session) {
           tags$button(id = "btn_next", type = "button",
             class = "btn btn-continue action-button",
             tags$span(class = "action-label", "Review & Download →")
+          )
+        )
+      )
+    )
+  }
+
+
+  # ── Screen 8: Review & Publish ─────────────────────────────────────────
+  # MVP scope: finalize notes (RF Details form) + EC config recap + fact
+  # sheet preview + downloads. Despite the "publish" screen id and the
+  # "Review & Publish" UX language, MVP only downloads -- no library push.
+  # See SCREENS NOTE near the top of this file.
+  #
+  # Form-field IDs use the _p08 suffix so they don't collide with the
+  # sidebar inputs (hvra_name, hvra_sci, desc, authors_text, assumptions,
+  # workshop_notes, refs) that are still rendered (display:none) on this
+  # screen for input-state persistence. A pair of observers below syncs
+  # values both ways so editing in either place keeps state in sync.
+  # final_thoughts is a NEW field that exists only on this screen.
+  render_publish <- function() {
+    div(class = "main-col",
+
+      # ── Page header ──────────────────────────────────────────────────────
+      div(class = "page-header",
+        div(class = "page-header-numeral", "08"),
+        div(class = "page-header-overline",
+          tags$span(class = "page-header-step", "Export"),
+          tags$span("· Review & Publish")
+        ),
+        h1(tags$strong("Final review."), " ",
+           tags$em("Add notes, then publish.")),
+        p("Add any final thoughts to the RF Details, double-check the EC ",
+          "config, and preview the fact sheet that gets published to the ",
+          "library. Outputs from step 7 travel with you to download.")
+      ),
+
+      # ── RF Details form card ─────────────────────────────────────────────
+      # Pre-fills each field from the corresponding sidebar input on render.
+      # Editing an input on this page fires a sync observer (server logic
+      # below) that writes the value back to the sidebar input, keeping
+      # state consistent whichever surface the user edits on.
+      div(class = "output-card",
+        div(class = "output-card-header",
+          div(class = "output-card-header-text",
+            tags$span(class = "output-card-overline", "RF DETAILS · ADD FINAL THOUGHTS"),
+            tags$span(class = "output-card-title",
+              tags$strong("Author notes"), " ", tags$em("& provenance"))
+          ),
+          tags$span(class = "output-card-flag", "EDITABLE · LAST CHANCE")
+        ),
+        div(class = "output-card-body",
+
+          # Row 1: HVRA common name (required) + Scientific name -- 2-col.
+          div(class = "rf-form-row rf-form-row-2col",
+            div(class = "field",
+              tags$label(class = "field-label field-label-required",
+                         "HVRA common name"),
+              textInput("hvra_name_p08", label = NULL,
+                        value = isolate(input$hvra_name) %||% "",
+                        placeholder = "e.g. Whitebark pine")
+            ),
+            div(class = "field",
+              tags$label(class = "field-label field-label-optional",
+                         "Scientific name"),
+              textInput("hvra_sci_p08", label = NULL,
+                        value = isolate(input$hvra_sci) %||% "",
+                        placeholder = "Pinus albicaulis")
+            )
+          ),
+
+          # Section break
+          div(class = "rf-form-section-label", "Provenance & assumptions"),
+
+          # Row 2: Ecoregion Applicability -- read-only, sourced from AOI.
+          div(class = "field",
+            tags$label(class = "field-label", "Ecoregion applicability"),
+            div(class = "rf-form-readonly",
+              {
+                regions <- state$selected_regions %||% character()
+                if (length(regions) > 0) paste(regions, collapse = ", ")
+                else if (!is.null(state$aoi_stands)) "Uploaded boundary"
+                else "—"
+              }
+            ),
+            div(class = "field-help",
+                "Auto-populated from your AOI selection on step 1.")
+          ),
+
+          # Row 3: Description
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional", "Description"),
+            textAreaInput("desc_p08", label = NULL, rows = 3,
+              value = isolate(input$desc) %||% "",
+              placeholder = "Brief description of what this RF represents — habitat focus, target audience, anything that helps a future user understand it.")
+          ),
+
+          # Row 4: Authors
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional", "Authors"),
+            textAreaInput("authors_text_p08", label = NULL, rows = 3,
+              value = isolate(input$authors_text) %||% "",
+              placeholder = "One per line: Name, Affiliation"),
+            div(class = "field-help", "e.g. K. Duffy, Vibrant Planet")
+          ),
+
+          # Row 5: Assumptions
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional", "Assumptions"),
+            textAreaInput("assumptions_p08", label = NULL, rows = 3,
+              value = isolate(input$assumptions) %||% "",
+              placeholder = "What conditions or limits should a future user know about?")
+          ),
+
+          # Row 6: Workshop Notes
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional", "Workshop notes"),
+            textAreaInput("workshop_notes_p08", label = NULL, rows = 3,
+              value = isolate(input$workshop_notes) %||% "",
+              placeholder = "Date, attendees, key decisions, points of disagreement…"),
+            div(class = "field-help",
+                "Captures the workshop context this RF emerged from.")
+          ),
+
+          # Row 7: Final Thoughts (NEW -- exists only on page 08)
+          div(class = "field",
+            tags$label(class = "field-label field-label-optional",
+                       "Final thoughts ", tags$em("· added after seeing the outputs")),
+            textAreaInput("final_thoughts", label = NULL, rows = 3,
+              value = isolate(input$final_thoughts) %||% "",
+              placeholder = "Anything worth flagging after seeing the curves? Surprising directions, caveats for future users, lessons learned in this workshop…"),
+            div(class = "field-help",
+                "Goes into the published fact sheet — capture what you noticed in the output that future reviewers should know about.")
+          ),
+
+          # Row 8: References
+          div(class = "field", style = "margin-bottom: 0;",
+            tags$label(class = "field-label field-label-optional", "References"),
+            textAreaInput("refs_p08", label = NULL, rows = 3,
+              value = isolate(input$refs) %||% "",
+              placeholder = "Citations, DOIs, links to source studies…")
+          )
+        )
+      ),
+
+      # ── EC Configuration recap ───────────────────────────────────────────
+      # Read-only summary of the weights/effects the user set on page 06.
+      # Pills reuse the .ec-effect-btn .is-selected styling for consistency
+      # with the page 06 toggle buttons. Renderer is output$ec_config_recap.
+      div(class = "output-card",
+        div(class = "output-card-header",
+          div(class = "output-card-header-text",
+            tags$span(class = "output-card-overline", "EC CONFIGURATION · RECAP"),
+            tags$span(class = "output-card-title",
+              tags$strong("Inputs"), " ", tags$em("you set in step 6"))
+          ),
+          tags$span(class = "output-card-flag output-card-flag-readonly",
+                    "READ-ONLY · GO BACK TO EDIT")
+        ),
+        div(class = "output-card-body",
+          uiOutput("ec_config_recap")
+        )
+      ),
+
+      # ── Final RF Details to Download (fact sheet preview) ────────────────
+      # Renamed from "Fact sheet preview" per the user's new framing — this
+      # card shows what gets bundled into the download. Renderer is
+      # output$factsheet_preview (rebuilt with design-system styling).
+      div(class = "output-card",
+        div(class = "output-card-header",
+          div(class = "output-card-header-text",
+            tags$span(class = "output-card-overline", "FACT SHEET · WHAT GETS DOWNLOADED"),
+            tags$span(class = "output-card-title",
+              tags$strong("Final RF Details"), " ", tags$em("to Download"))
+          )
+        ),
+        div(class = "output-card-body",
+          div(class = "factsheet-wrap",
+            uiOutput("factsheet_preview")
+          )
+        )
+      ),
+
+      # ── Page footer ──────────────────────────────────────────────────────
+      # Status pill on the left; navigation + downloads on the right.
+      # Six buttons total: Back, Start new (both ghost), three individual
+      # downloads (ghost), Download all (forest-deep primary). Wraps to a
+      # second row if the viewport gets tight.
+      # Download handlers (output$dl_rf, dl_ec, dl_factsheet, dl_all) are
+      # already defined in the server logic from Phase A; just wiring the
+      # widgets here. The "Start a new RF" button keeps id="btn_reset" so
+      # the existing observer fires (clears all state, returns to AOI).
+      div(class = "page-footer page-footer-publish",
+        div(class = "page-footer-status",
+          div(class = "page-footer-status-mark"),
+          tags$span("Ready to download · 4 files")
+        ),
+        # Two stacked rows on the right: downloads first, navigation second.
+        # The .page-footer-actions-stack wrapper takes the float:right that
+        # .page-footer-actions normally owns, so its two child rows sit
+        # right-aligned on top of each other instead of fighting for one line.
+        div(class = "page-footer-actions-stack",
+          # NB: deliberately no `action-button` class on these download links.
+          # Adding it makes Shiny double-bind the <a> as both an input and an
+          # output, which can interfere with the browser's link-click handling
+          # (the `download` attribute + target="_blank" combo is fragile when
+          # other bindings touch the same element). Visual styling comes from
+          # .btn-ghost / .btn-continue only.
+          div(class = "page-footer-actions",
+            downloadButton("dl_rf",        "RF outputs (CSV)",
+                           class = "btn-ghost"),
+            downloadButton("dl_ec",        "EC config (CSV)",
+                           class = "btn-ghost"),
+            downloadButton("dl_factsheet", "Fact sheet (md)",
+                           class = "btn-ghost"),
+            downloadButton("dl_all",       "Download all (zip)",
+                           class = "btn-continue")
+          ),
+          div(class = "page-footer-actions",
+            tags$button(id = "btn_back", type = "button",
+              class = "btn btn-ghost action-button",
+              tags$span(class = "action-label", "← Back to outputs")
+            ),
+            tags$button(id = "btn_reset", type = "button",
+              class = "btn btn-ghost action-button",
+              tags$span(class = "action-label", "Start a new RF")
+            )
           )
         )
       )
@@ -3008,6 +3269,81 @@ server <- function(input, output, session) {
       )
     }
     dt
+  })
+
+  # ── EC Configuration recap (page 08) ───────────────────────────────────
+  # Custom HTML table (vs DT) for full design-system control. Reads the
+  # same wts/fxs/rngs state as output$ec_config_table; renders a clean
+  # Weight column ("3/5") and pill-styled Effect column reusing the
+  # existing .ec-effect-btn .is-selected styling from page 06 (per the
+  # earlier "reuse existing chip/effect-btn styling" decision).
+  output$ec_config_recap <- renderUI({
+    picks <- selected_ecs()
+    if (length(picks) == 0) {
+      return(div(class = "rf-table-empty", "No ECs selected."))
+    }
+    wts  <- state$ec_weights
+    fxs  <- state$ec_effects
+    rngs <- state$ec_ranges
+
+    rows <- lapply(picks, function(col) {
+      info  <- ec_labels[ec_labels$column == col, ]
+      label <- if (nrow(info) > 0) info$label[1]       else col
+      cat   <- if (nrow(info) > 0) info$subcategory[1] else ""
+      unit  <- if (nrow(info) > 0) info$unit[1]        else ""
+      w     <- as.integer(wts[[col]] %||% 3L)
+      eff   <- fxs[[col]] %||% "Positive"
+      eff_short <- switch(eff,
+                          "Positive" = "POS",
+                          "Negative" = "NEG",
+                          "Range"    = "RANGE",
+                          toupper(eff))
+      eff_icon <- switch(eff,
+                         "Positive" = "↗",
+                         "Negative" = "↘",
+                         "Range"    = "∧",
+                         "")
+      rng_str <- if (eff == "Range" && !is.null(rngs[[col]]) &&
+                     !all(is.na(rngs[[col]]))) {
+        mn <- rngs[[col]][1]; mx <- rngs[[col]][2]
+        paste0(format(mn), " - ", format(mx),
+               if (nzchar(unit)) paste0(" ", unit) else "")
+      } else {
+        "—"
+      }
+
+      htmltools::tags$tr(class = "ec-recap-row",
+        htmltools::tags$td(class = "ec-recap-cell ec-recap-cell-ec", label),
+        htmltools::tags$td(class = "ec-recap-cell ec-recap-cell-cat", cat),
+        htmltools::tags$td(class = "ec-recap-cell ec-recap-cell-weight",
+          htmltools::HTML(sprintf(
+            "<strong>%d</strong><span class='ec-recap-weight-denom'>/5</span>",
+            w))
+        ),
+        htmltools::tags$td(class = "ec-recap-cell ec-recap-cell-effect",
+          htmltools::tags$span(
+            class = paste("ec-effect-btn ec-recap-pill is-selected"),
+            `data-effect` = eff,
+            htmltools::tags$span(class = "ec-effect-icon", eff_icon),
+            htmltools::tags$span(eff_short)
+          )
+        ),
+        htmltools::tags$td(class = "ec-recap-cell ec-recap-cell-range", rng_str)
+      )
+    })
+
+    htmltools::tags$table(class = "ec-recap-table",
+      htmltools::tags$thead(
+        htmltools::tags$tr(
+          htmltools::tags$th(class = "ec-recap-th", "EC"),
+          htmltools::tags$th(class = "ec-recap-th", "Category"),
+          htmltools::tags$th(class = "ec-recap-th", "Weight"),
+          htmltools::tags$th(class = "ec-recap-th", "Effect"),
+          htmltools::tags$th(class = "ec-recap-th", "Range / Settings")
+        )
+      ),
+      htmltools::tags$tbody(rows)
+    )
   })
 
   # ── EC config table (download screen) ──────────────────────────────────
