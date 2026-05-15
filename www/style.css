@@ -2666,3 +2666,225 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
 .ec-contrib-table-wrap table.dataTable thead .sorting_desc:after {
   color: var(--vp-ink-faint) !important;
 }
+
+/* ============================================================
+   COMPONENT — Progress notification (modal loading overlay)
+   ------------------------------------------------------------
+   CSS-only restyle of Shiny's built-in withProgress() notification:
+   centers it on screen as a modal card with a backdrop, branded
+   spinner, and shimmering progress bar. No JS, no template, no R
+   changes -- existing withProgress(message = "...", { ... }) calls
+   keep working as-is and the message text becomes the card body.
+
+   Selector hook is .shiny-progress-notification (the inner div Shiny
+   wraps every progress notification's content in -- distinct from
+   error/info toasts which carry only .shiny-notification). Anchored
+   via :has() so error/info toasts keep their bottom-right placement.
+
+   Requires :has() support (Chrome/Edge 105+, Safari 15.4+, Firefox
+   121+). On older browsers the notification falls back to a plain
+   bottom-right toast -- functional, just not centered.
+
+   Real DOM (verified in-app, not docs):
+     .shiny-notification
+       .shiny-notification-close (×)
+       .shiny-notification-content
+         .shiny-notification-content-text
+           .shiny-progress-notification           <-- our hook
+             .progress > .progress-bar
+             .progress-text
+               .progress-message
+               .progress-detail
+   ============================================================ */
+
+/* Backdrop: fixed full-viewport dim+blur whenever a progress
+   notification is active. Body::before sits below the notification
+   (z-index 999 vs 1000) so the card reads as a modal "above" the
+   dimmed app. pointer-events: all on the backdrop blocks all clicks
+   underneath, which is the "don't touch anything while we work"
+   affordance. */
+body:has(.shiny-progress-notification)::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(15, 24, 18, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: ld-fade 0.22s ease-out;
+}
+@keyframes ld-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Lift progress notifications out of Shiny's bottom-right corner
+   panel and center them as a modal card. !important is needed
+   because Shiny sets position/right/bottom inline on the parent
+   panel; we override at the notification level. Error/info toasts
+   don't contain .shiny-progress-notification, so they stay corner-
+   anchored. */
+.shiny-notification:has(.shiny-progress-notification) {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: translate(-50%, -50%);
+  width: min(460px, 90vw);
+  max-width: none;
+  z-index: 1000;
+  background: var(--vp-paper);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8) var(--space-10) var(--space-6);
+  box-shadow: var(--shadow-lg),
+              0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  text-align: center;
+  opacity: 1;
+  animation: ld-rise 0.26s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+@keyframes ld-rise {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.985); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* Brand spinner above the message: a static VPDC avatar disc with
+   an orange arc spinning around it. Two pseudo-elements:
+     ::before -- 56x56 disc holding the avatar (static); takes the
+                 layout slot above the message text via normal-flow
+                 block + auto margins.
+     ::after  -- 56x56 ring with a partial orange border, absolutely
+                 positioned exactly over ::before, rotating. Border
+                 transparent on bottom/left + orange on top/right
+                 gives the chasing-arc look.
+   The two are sized identically; ::after's border sits exactly on
+   top of ::before's inset box-shadow ring (box-sizing: border-box
+   makes the border-inset variant land in the same place as the
+   shadow-inset variant).
+
+   Avatar path is relative to www/style.css, which Shiny serves at
+   /www/style.css via addResourcePath("www", ...) -- so a bare
+   filename resolves to /www/VPDC_Avatar_Color_2024.png. */
+.shiny-notification:has(.shiny-progress-notification)::before {
+  content: '';
+  display: block;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto var(--space-4);
+  border-radius: 50%;
+  background-color: var(--vp-paper);
+  background-image: url('VPDC_Avatar_Color_2024.png');
+  background-size: 55% 55%;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: inset 0 0 0 2.5px var(--vp-forest-tint);
+  position: relative;
+  z-index: 1;
+}
+.shiny-notification:has(.shiny-progress-notification)::after {
+  content: '';
+  position: absolute;
+  top: var(--space-8);             /* matches card padding-top */
+  left: calc(50% - 28px);          /* horizontal-center the 56px ring */
+  width: 56px;
+  height: 56px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2.5px solid transparent;
+  border-top-color: var(--vp-orange);
+  border-right-color: var(--vp-orange);
+  animation: ld-spin 1.05s linear infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+@keyframes ld-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Hide the close X -- progress notifications shouldn't be
+   user-dismissible; the work continues server-side regardless and
+   dismissing the indicator just hides feedback. */
+.shiny-notification:has(.shiny-progress-notification) .shiny-notification-close {
+  display: none !important;
+}
+
+/* In Shiny's DOM the .progress bar comes BEFORE the .progress-text
+   (message + detail). Visually we want message above the bar -- flip
+   their visual order via flex order without touching markup. */
+.shiny-progress-notification {
+  display: flex;
+  flex-direction: column;
+}
+.shiny-progress-notification .progress      { order: 2; }
+.shiny-progress-notification .progress-text { order: 1; }
+
+/* Message text becomes the card title. Pulls from
+   withProgress(message = "..."). */
+.shiny-progress-notification .progress-message {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--vp-ink);
+  line-height: 1.4;
+  margin-bottom: var(--space-4);
+}
+
+/* Detail (withProgress 'detail =' arg) sits below the title in a
+   smaller mono. Most call sites don't pass detail, in which case
+   the span stays empty and takes no vertical space. */
+.shiny-progress-notification .progress-detail {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--vp-ink-mid);
+  margin-bottom: var(--space-4);
+  letter-spacing: 0.02em;
+}
+.shiny-progress-notification .progress-detail:empty {
+  display: none;
+}
+
+/* Progress bar -- replace Bootstrap's default striped bar with an
+   indeterminate slide animation. Hide the real .progress-bar
+   element (whose width Shiny manages from the 'value' arg) and
+   paint our own animated bar via the .progress container's
+   ::after pseudo. withProgress(value = NULL) and
+   withProgress(value = 0.5) both look the same -- always
+   "actively working" rather than stuck at a single percentage. */
+.shiny-progress-notification .progress {
+  position: relative;
+  height: 6px;
+  background: var(--vp-paper-warm);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 0;
+  box-shadow: none;
+}
+.shiny-progress-notification .progress-bar {
+  display: none;
+}
+.shiny-progress-notification .progress::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    var(--vp-orange)        0%,
+    var(--vp-orange-bright) 50%,
+    var(--vp-orange)        100%);
+  background-size: 200% 100%;
+  animation: ld-slide 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite,
+             ld-shimmer 2.2s linear infinite;
+}
+@keyframes ld-slide {
+  0%   { left: -40%; width: 40%; }
+  50%  { left: 30%;  width: 50%; }
+  100% { left: 100%; width: 40%; }
+}
+@keyframes ld-shimmer {
+  0%   { background-position:    0% 0; }
+  100% { background-position: -200% 0; }
+}
