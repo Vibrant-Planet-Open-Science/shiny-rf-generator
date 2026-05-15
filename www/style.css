@@ -434,6 +434,58 @@ body[data-screen="outputs"] .sidebar,
 body[data-screen="publish"] .sidebar { display: none; }
 body[data-screen="outputs"] .page,
 body[data-screen="publish"] .page    { grid-template-columns: 1fr; }
+
+/* Sidebar collapse breakpoint -- when the viewport can't comfortably
+   hold the 1fr + 22rem two-column layout, stack the sidebar ABOVE the
+   main column so it's still glanceable but doesn't squeeze the wizard
+   content. Placed AFTER the per-screen overrides above so display:none
+   on outputs/publish still wins (a hidden element has no order).
+
+   The .sidebar contains required wizard inputs on pages 4-6, not
+   supplementary metadata, so it MUST behave as a normal-flow stacked
+   panel here -- never floating, never overlaying the main column.
+   position: static overrides the position: sticky from the base
+   .sidebar rule (line ~416) which would otherwise keep the sidebar
+   pinned to the viewport top while the user scrolls main content
+   underneath it. */
+@media (max-width: 1140px) {
+  .page {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    order: -1;          /* grid items honor `order` like flex items */
+    max-width: 100%;    /* override the 22rem cap from the .sidebar rule above */
+    width: 100%;
+    position: static;   /* override the position: sticky -- no overlay behavior */
+  }
+
+  /* Per-page collapsed default: rules read body[data-rf-details], set
+     by the JS in app.R on every wizard navigation. Migrated from
+     .sidebar.is-collapsed (now removed) so the open/closed state
+     mirrors the body[data-screen] pattern. Header always shows;
+     everything else hides when closed. */
+  body[data-rf-details="closed"] .sidebar > *:not(.sidebar-header) {
+    display: none;
+  }
+  body[data-rf-details="closed"] .sidebar .sidebar-header {
+    padding-bottom: 0;
+    margin-bottom: 0;
+    border-bottom: none;
+  }
+  body[data-rf-details="closed"] .sidebar {
+    padding-bottom: var(--space-4);
+  }
+}
+
+/* Hide the sidebar toggle at wide viewports -- at >= 1141px the
+   sidebar always renders full and the toggle has no purpose. The JS
+   handler still works on click (no-op visually) but the button is
+   gone, so users never see a non-functional control. */
+@media (min-width: 1141px) {
+  .sidebar-toggle {
+    display: none;
+  }
+}
 .sidebar-header {
   display: flex;
   align-items: baseline;
@@ -1043,15 +1095,13 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
 }
 
 
-/* Collapsed state — hide everything except the header.
-   Sidebar narrows, main column reflows to use the freed space. */
-.sidebar.is-collapsed > *:not(.sidebar-header) { display: none; }
-.sidebar.is-collapsed .sidebar-header {
-  padding-bottom: 0;
-  margin-bottom: 0;
-  border-bottom: none;
-}
-.sidebar.is-collapsed { padding-bottom: var(--space-4); }
+/* Collapsed-state rules previously lived here as .sidebar.is-collapsed
+   selectors. Migrated to body[data-rf-details="closed"] inside the
+   @media (max-width: 1140px) block above so collapse only applies at
+   narrow viewports (above the breakpoint, the sidebar always renders
+   full -- there's room for it next to the wizard). The toggle handler
+   in app.R sets body.dataset.rfDetails instead of toggling .is-
+   collapsed on .sidebar. */
 
 /* ============================================================
    COMPONENT — Breadcrumb sections (v0.2)
@@ -1623,7 +1673,7 @@ details[open] > .teaching-summary > .teaching-chevron { transform: rotate(-180de
    ═══════════════════════════════════════════════════════════════════════ */
 
 .app-container {
-  max-width: 1000px;
+  max-width: 1320px;
   margin: 0 auto;
   padding: var(--space-5);
 }

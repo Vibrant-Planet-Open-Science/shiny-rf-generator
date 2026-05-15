@@ -269,18 +269,54 @@ ui <- fluidPage(
       // make per-screen layout decisions (e.g. hiding .sidebar on the
       // outputs screen). Preserves DOM and input state — the sidebar
       // inputs persist across navigation because they're not re-rendered.
+      // Also re-applies the per-screen RF Details default at narrow
+      // viewports (page 1 = open, all others = closed) via
+      // applySidebarDefault() defined below.
       Shiny.addCustomMessageHandler('set_body_screen', function(s) {
         document.body.dataset.screen = s;
+        applySidebarDefault();
       });
 
-      // Sidebar collapse toggle.
+      // Sidebar collapse toggle. Operates on body[data-rf-details]
+      // instead of a class on .sidebar so the open/closed state mirrors
+      // the data-screen pattern at body level. Above the 1140px
+      // breakpoint the data attribute has no visual effect (CSS rules
+      // that read it live inside the narrow @media block) and the
+      // toggle button itself is hidden via CSS.
       document.addEventListener('click', function(e) {
         if (e.target.matches('.sidebar-toggle')) {
-          var s = e.target.closest('.sidebar');
-          var collapsed = s.classList.toggle('is-collapsed');
-          e.target.textContent = collapsed ? 'expand +' : 'collapse \u2212';
+          var current = document.body.dataset.rfDetails || 'open';
+          var next = current === 'open' ? 'closed' : 'open';
+          document.body.dataset.rfDetails = next;
+          e.target.textContent = next === 'closed' ? 'expand +' : 'collapse \u2212';
         }
       });
+
+      // Per-screen default for the RF Details sidebar at narrow viewports
+      // (matches the @media (max-width: 1140px) breakpoint in style.css).
+      // Page 1 (aoi) opens by default; all other pages close. Above the
+      // breakpoint the attribute is cleared so it can't leak into the
+      // wide-viewport layout. Called from set_body_screen above on every
+      // wizard navigation, AND from the matchMedia change listener below
+      // so resize-without-navigating still re-applies the right default.
+      var SIDEBAR_NARROW = window.matchMedia('(max-width: 1140px)');
+
+      function applySidebarDefault() {
+        var screen = document.body.dataset.screen || 'aoi';
+        var toggle = document.querySelector('.sidebar-toggle');
+        if (!SIDEBAR_NARROW.matches) {
+          delete document.body.dataset.rfDetails;
+          if (toggle) toggle.textContent = 'collapse \u2212';
+          return;
+        }
+        var defaultState = (screen === 'aoi') ? 'open' : 'closed';
+        document.body.dataset.rfDetails = defaultState;
+        if (toggle) {
+          toggle.textContent = defaultState === 'closed' ? 'expand +' : 'collapse \u2212';
+        }
+      }
+
+      SIDEBAR_NARROW.addEventListener('change', applySidebarDefault);
 
       // ── Generic chip-pill remover/clearer — works for any checkboxGroupInput.
       // Used by the filter pickers on page 02. Iterates instead of using a
