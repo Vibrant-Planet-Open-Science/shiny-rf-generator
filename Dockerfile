@@ -21,10 +21,10 @@ FROM rocker/geospatial:4.5.3
 # ----------------------------------------------------------------------------
 # rocker/geospatial already includes GDAL/PROJ/GEOS/UDUNITS plus curl,
 # openssl, xml2, fontconfig dev libs. V8 is the only renv.lock dependency
-# not pre-installed; libv8-dev is a virtual package that resolves to
-# libnode-dev on Ubuntu jammy (the base image's distro).
+# not pre-installed. On Ubuntu noble (the base image's distro) the V8 R
+# package links against libnode-dev — libv8-dev isn't a noble package.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libv8-dev \
+      libnode-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -38,7 +38,7 @@ WORKDIR /srv/shiny-app
 # Pull Linux binaries from Posit Public Package Manager instead of compiling
 # from CRAN source. Typical impact: ~20 min build → ~2 min build.
 # https://packagemanager.posit.co/client/#/repos/cran/setup
-ENV RENV_CONFIG_REPOS_OVERRIDE=https://packagemanager.posit.co/cran/__linux__/jammy/latest
+ENV RENV_CONFIG_REPOS_OVERRIDE=https://packagemanager.posit.co/cran/__linux__/noble/latest
 
 RUN R -e "install.packages('renv', repos = c(CRAN = '${RENV_CONFIG_REPOS_OVERRIDE}'))"
 
