@@ -35,3 +35,20 @@ stand IDs from S3.
 
 Stand metadata lookup — maps `StandID + Variant` → `Forest_Type`,
 `Structure_Class`, etc. Joined with TreeMap IDs in `get_tm_ids()`.
+
+
+## species_crosswalk.csv
+
+USDA PLANTS species code → common + scientific name lookup. Read by
+`R/app.R` at startup; used to render friendly labels on the RF Type
+screen's species picker. Covers FVS Western variants (CA + CR).
+
+**Original source:** USDA Forest Service FVS Species Crosswalk
+(`WesternSpeciesTranslator` sheet), originally sourced from 
+https://www.fs.usda.gov/fmsc/ftp/fvs/docs/overviews/FVS_SpeciesCrosswalk.xls. 
+This CSV is now the source of truth; the Excel workbook is no longer
+in-repo.
+
+**Refresh:**
+```bash
+Rscript scripts/build_species_crosswalk.R

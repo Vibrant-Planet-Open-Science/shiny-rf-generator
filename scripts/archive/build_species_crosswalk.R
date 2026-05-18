@@ -5,6 +5,8 @@
 #
 # Run from project root with:  Rscript scripts/build_species_crosswalk.R
 
+#### NOTE: xls no longer in-repo (/data/...); restore before running. #####
+
 required <- c("readxl", "dplyr", "readr", "here")
 missing  <- setdiff(required, rownames(installed.packages()))
 if (length(missing) > 0) {

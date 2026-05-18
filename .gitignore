@@ -51,6 +51,7 @@ rsconnect/
 # Claude Code local config
 .claude/
 CLAUDE.md
+STATE.md
 
 # macOS
 .DS_Store
