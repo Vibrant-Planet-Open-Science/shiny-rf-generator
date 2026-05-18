@@ -40,6 +40,7 @@ library(sf)
 library(leaflet)
 library(dplyr)
 library(aws.s3)
+library(aws.ec2metadata)  # provides ECS task role credential discovery for aws.signature
 library(purrr)
 library(tibble)
 library(tidyr)

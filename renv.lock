@@ -336,6 +336,32 @@
       "Maintainer": "Jeroen Ooms <jeroenooms@gmail.com>",
       "Repository": "CRAN"
     },
+    "aws.ec2metadata": {
+      "Package": "aws.ec2metadata",
+      "Version": "0.2.0",
+      "Source": "GitHub",
+      "Type": "Package",
+      "Title": "Get EC2 Instance Metadata",
+      "Date": "2019-07-15",
+      "Authors@R": "c(person(\"Thomas J.\", \"Leeper\", role = c(\"aut\"), email = \"thosjleeper@gmail.com\", comment = c(ORCID = \"0000-0003-4097-6326\")), person(\"Jonathan\", \"Stott\", role = c(\"cre\", \"aut\"), email =  \"jonathan.stott@magairports.com\") )",
+      "Description": "Retrieve Amazon EC2 instance metadata from within the running instance.",
+      "License": "GPL (>= 2)",
+      "URL": "https://github.com/cloudyr/aws.ec2metadata",
+      "BugReports": "https://github.com/cloudyr/aws.ec2metadata/issues",
+      "Imports": [
+        "curl",
+        "jsonlite"
+      ],
+      "RoxygenNote": "6.1.1",
+      "Author": "Thomas J. Leeper [aut] (ORCID: <https://orcid.org/0000-0003-4097-6326>), Jonathan Stott [cre, aut]",
+      "Maintainer": "Jonathan Stott <jonathan.stott@magairports.com>",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteUsername": "cloudyr",
+      "RemoteRepo": "aws.ec2metadata",
+      "RemoteRef": "0.2.0",
+      "RemoteSha": "71adea3f68e7733897f5b47cefb82a8c5e38f095"
+    },
     "aws.s3": {
       "Package": "aws.s3",
       "Version": "0.3.22",
