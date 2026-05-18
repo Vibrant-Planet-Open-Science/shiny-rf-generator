@@ -59,11 +59,8 @@ COPY . .
 # ----------------------------------------------------------------------------
 # Runtime config
 # ----------------------------------------------------------------------------
-# Container listens on 8080; the ALB target group and ECS task definition
-# both point at this port. Overrides Shiny's default of 3838.
-ENV SHINY_PORT=8080
-ENV SHINY_HOST=0.0.0.0
-
+# Container listens on 8080 (the CMD hardcodes this). The ALB target group
+# and ECS task definition both reference 8080. Overrides Shiny's default 3838.
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
