@@ -1,0 +1,36 @@
+# Git / VCS
+.git/
+.gitignore
+.gitattributes
+
+# renv local library (container does its own restore)
+renv/library/
+renv/local/
+renv/cellar/
+renv/staging/
+renv/sandbox/
+renv/python/
+
+# IDE / editor cruft
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+.vscode/
+.idea/
+
+# Build / dev tooling not needed at runtime
+scripts/
+infra/
+tests/
+docs/
+
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Docker itself
+Dockerfile
+.dockerignore
